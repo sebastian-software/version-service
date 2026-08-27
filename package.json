@@ -1,8 +1,8 @@
 {
-  "name": "repo-template",
+  "name": "version-service",
   "version": "0.0.0",
   "private": true,
-  "description": "One-line description of the project.",
+  "description": "Shared update-check endpoint for Sebastian Software CLIs — privacy-bounded version checks with aggregate usage counts.",
   "license": "MIT",
   "author": {
     "name": "Sebastian Software GmbH",
@@ -10,7 +10,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/sebastian-software/repo-template.git"
+    "url": "https://github.com/sebastian-software/version-service.git"
   },
   "funding": {
     "type": "github",
