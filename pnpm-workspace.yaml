@@ -1,0 +1,26 @@
+packages:
+  - "packages/*"
+allowBuilds:
+  "@oxfmt/binding-android-arm-eabi": true
+  "@oxfmt/binding-android-arm64": true
+  "@oxfmt/binding-darwin-arm64": true
+  "@oxfmt/binding-darwin-x64": true
+  "@oxfmt/binding-freebsd-x64": true
+  "@oxfmt/binding-linux-arm-gnueabihf": true
+  "@oxfmt/binding-linux-arm-musleabihf": true
+  "@oxfmt/binding-linux-arm64-gnu": true
+  "@oxfmt/binding-linux-arm64-musl": true
+  "@oxfmt/binding-linux-ppc64-gnu": true
+  "@oxfmt/binding-linux-riscv64-gnu": true
+  "@oxfmt/binding-linux-riscv64-musl": true
+  "@oxfmt/binding-linux-s390x-gnu": true
+  "@oxfmt/binding-linux-x64-gnu": true
+  "@oxfmt/binding-linux-x64-musl": true
+  "@oxfmt/binding-openharmony-arm64": true
+  "@oxfmt/binding-win32-arm64-msvc": true
+  "@oxfmt/binding-win32-ia32-msvc": true
+  "@oxfmt/binding-win32-x64-msvc": true
+  esbuild: true
+  unrs-resolver: true
+minimumReleaseAgeExclude:
+  - "@sebastian-software/standards@0.2.0"

@@ -1,0 +1,46 @@
+{
+  "name": "repo-template",
+  "version": "0.0.0",
+  "private": true,
+  "description": "One-line description of the project.",
+  "license": "MIT",
+  "author": {
+    "name": "Sebastian Software GmbH",
+    "url": "https://sebastian-software.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sebastian-software/repo-template.git"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/sebastian-software"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "tsc -p tsconfig.root.json && pnpm -r typecheck",
+    "lint": "pnpm lint:oxlint && pnpm lint:eslint",
+    "lint:eslint": "eslint . --max-warnings=0",
+    "lint:oxlint": "oxlint -c oxlint.config.ts",
+    "format": "oxfmt --ignore-path .oxfmtignore --write .",
+    "format:check": "oxfmt --ignore-path .oxfmtignore --check .",
+    "check:standards": "standards check",
+    "agent:check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test && pnpm check:standards"
+  },
+  "devDependencies": {
+    "@sebastian-software/standards": "^0.2.0",
+    "@types/node": "^24.12.4",
+    "eslint": "^10.4.0",
+    "eslint-config-setup": "^0.4.0",
+    "jiti": "^2.7.0",
+    "oxfmt": "^0.54.0",
+    "oxlint": "^1.67.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@11.6.0"
+}
