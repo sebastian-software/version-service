@@ -39,6 +39,21 @@ Check the Rybbit API rate limit before real adoption: keys are limited to
 raise it, and revisit sink batching or one key per project when the daily
 request curve approaches that ceiling.
 
+## Abuse and rate limiting
+
+The endpoint is deliberately unauthenticated — any Internet client can submit
+valid-looking payloads. The blast radius is bounded (checks are advisory and
+fail silent, and the metric carries no identity), but sustained spam can
+pollute the usage distributions and exhaust the Rybbit API quota, turning the
+endpoint into `503` for honest clients. Two required mitigations:
+
+1. Enable Bunny's platform-level per-client rate limiting (Shield/edge rules)
+   on the hostname before go-live. This runs in CDN infrastructure alongside
+   TLS termination; application code still never reads or stores addresses.
+2. Treat the numbers as an advisory activity proxy: watch the Rybbit series
+   for volume anomalies and be ready to rotate the API key or tighten the
+   platform limit.
+
 ## 3. Wire GitHub deployments
 
 1. Script → **Deployments** → **Settings**: copy the script id and deploy key.
