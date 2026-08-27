@@ -1,0 +1,16 @@
+{
+  "name": "@sebastian-software/version-service-edge",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bunny Edge Scripting endpoint for privacy-bounded CLI update checks.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node --check ./src/script.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test ./src/script.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

@@ -50,16 +50,21 @@ Response:
 
 ## Status
 
-The agreed design and its open points are pinned in
+The edge script is implemented in `packages/edge-script` with a full contract
+test suite, but the service is **not yet deployed** — [DEPLOYMENT.md](DEPLOYMENT.md)
+is the step-by-step guide, including the live verification that must pass
+before any client release embeds the endpoint. The design record is
 [palamedes#1036](https://github.com/sebastian-software/palamedes/issues/1036).
-The service is **not yet implemented or deployed**. The Rust reference client
-lives in [palamedes#973](https://github.com/sebastian-software/palamedes/pull/973);
+The Rust reference client lives in
+[palamedes#973](https://github.com/sebastian-software/palamedes/pull/973);
 a shared Node client (`@sebastian-software/update-check`) is planned as a
 package in this repository.
 
 ## Development
 
-Source code lives in `packages/<name>`.
+The deployable script is the single file `packages/edge-script/src/script.mjs`
+(plain Web-API JavaScript; the Bunny bootstrap at the bottom only runs under
+Deno, so Node's test runner imports the pure handler directly).
 
 ```bash
 pnpm install

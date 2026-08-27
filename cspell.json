@@ -1,4 +1,15 @@
 {
   "version": "0.2",
-  "words": ["lockfile", "oxfmt", "oxlint", "pnpm", "repometa"]
+  "words": [
+    "bunny",
+    "edgescript",
+    "lockfile",
+    "npmjs",
+    "oxfmt",
+    "oxlint",
+    "palamedes",
+    "pnpm",
+    "repometa",
+    "rybbit"
+  ]
 }

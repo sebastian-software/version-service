@@ -1,0 +1,25 @@
+# Deploys the edge script to Bunny when deployment is armed.
+# Setup lives in DEPLOYMENT.md: create the script in the Bunny dashboard,
+# store its Deployments → Settings credentials as the BUNNY_SCRIPT_ID and
+# BUNNY_DEPLOY_KEY repository secrets, then set the BUNNY_DEPLOY_ENABLED
+# repository variable to "true".
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/edge-script/src/script.mjs"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: vars.BUNNY_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: BunnyWay/actions/deploy-script@main
+        with:
+          script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
+          deploy_key: ${{ secrets.BUNNY_DEPLOY_KEY }}
+          file: "packages/edge-script/src/script.mjs"
