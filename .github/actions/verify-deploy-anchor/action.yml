@@ -1,0 +1,25 @@
+name: Verify deployment anchor
+description: Fail unless the immutable workflow anchor is still current main
+
+inputs:
+  anchor:
+    description: Full commit SHA captured when the main workflow was dispatched
+    required: true
+
+outputs:
+  eligible:
+    description: Whether the immutable anchor is still current main
+    value: ${{ steps.verify.outputs.eligible }}
+  current:
+    description: Current main commit SHA observed after acquiring the deployment slot
+    value: ${{ steps.verify.outputs.current }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compare immutable anchor with current main
+      id: verify
+      env:
+        EXPECTED_ANCHOR: ${{ inputs.anchor }}
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/verify.sh"
