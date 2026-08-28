@@ -19,13 +19,14 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
-    "test": "pnpm -r test",
+    "test": "pnpm -r test && pnpm test:deployment",
+    "test:deployment": "node --test ./.github/actions/verify-deploy-anchor/*.test.mjs ./.github/scripts/*.test.mjs",
     "typecheck": "tsc -p tsconfig.root.json && pnpm -r typecheck",
     "lint": "pnpm lint:oxlint && pnpm lint:eslint",
     "lint:eslint": "eslint . --max-warnings=0",
     "lint:oxlint": "oxlint -c oxlint.config.ts",
-    "format": "oxfmt --ignore-path .oxfmtignore --write .",
-    "format:check": "oxfmt --ignore-path .oxfmtignore --check .",
+    "format": "oxfmt --ignore-path .oxfmtignore --write . \"!.sops.yaml\"",
+    "format:check": "oxfmt --ignore-path .oxfmtignore --check . \"!.sops.yaml\"",
     "check:standards": "standards check",
     "agent:check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test && pnpm check:standards"
   },

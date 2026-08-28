@@ -1,25 +1,338 @@
-# Deploys the edge script to Bunny when deployment is armed.
-# Setup lives in DEPLOYMENT.md: create the script in the Bunny dashboard,
-# store its Deployments → Settings credentials as the BUNNY_SCRIPT_ID and
-# BUNNY_DEPLOY_KEY repository secrets, then set the BUNNY_DEPLOY_ENABLED
-# repository variable to "true".
 name: Deploy
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "packages/edge-script/src/script.mjs"
   workflow_dispatch:
+    inputs:
+      script_ref:
+        description: Optional full commit SHA to deploy; must be an ancestor of this main revision
+        required: false
+        type: string
+      verify_only:
+        description: Exercise the serialized production freshness preflight without deploying
+        required: false
+        default: false
+        type: boolean
+
+permissions: {}
 
 jobs:
-  deploy:
-    if: vars.BUNNY_DEPLOY_ENABLED == 'true'
+  resolve:
+    name: Resolve deployment revision
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      anchor: ${{ steps.resolve.outputs.anchor }}
+      candidate: ${{ steps.resolve.outputs.candidate }}
+      verify_only: ${{ steps.resolve.outputs.verify_only }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: BunnyWay/actions/deploy-script@main
+      - name: Check out the immutable workflow anchor
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
-          deploy_key: ${{ secrets.BUNNY_DEPLOY_KEY }}
-          file: "packages/edge-script/src/script.mjs"
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve and authorize candidate
+        id: resolve
+        env:
+          REQUESTED_REF: ${{ inputs.script_ref }}
+          VERIFY_ONLY: ${{ inputs.verify_only }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Deployments must be dispatched from main."
+            exit 1
+          fi
+
+          anchor="$(git rev-parse --verify 'HEAD^{commit}')"
+          if [[ ! "$anchor" =~ ^[0-9a-f]{40}$ || "$anchor" != "$GITHUB_SHA" ]]; then
+            echo "::error::The checked-out workflow anchor does not match github.sha."
+            exit 1
+          fi
+
+          requested="$REQUESTED_REF"
+          if [[ -z "$requested" ]]; then
+            candidate="$anchor"
+          else
+            if [[ ! "$requested" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "::error::script_ref must be a full 40-character commit SHA."
+              exit 1
+            fi
+            candidate="$(git rev-parse --verify "${requested}^{commit}")"
+            if ! git merge-base --is-ancestor "$candidate" "$anchor"; then
+              echo "::error::script_ref must be an ancestor of the immutable main anchor."
+              exit 1
+            fi
+          fi
+
+          if ! git cat-file -e "$candidate:packages/edge-script/src/script.mjs"; then
+            echo "::error::The selected commit does not contain the deployable edge script."
+            exit 1
+          fi
+
+          case "$VERIFY_ONLY" in
+            true | false) verify_only="$VERIFY_ONLY" ;;
+            *)
+              echo "::error::verify_only did not resolve to a boolean value."
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "anchor=$anchor"
+            echo "candidate=$candidate"
+            echo "verify_only=$verify_only"
+          } >> "$GITHUB_OUTPUT"
+
+  validate:
+    name: Validate selected revision
+    needs: resolve
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out selected revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.candidate }}
+          persist-credentials: false
+
+      - name: Set up pnpm and Node.js
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
+        with:
+          runtime: node@24
+          cache: true
+          install: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run repository checks
+        run: pnpm agent:check
+
+  eligibility:
+    name: Check current-main eligibility
+    needs: [resolve, validate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      eligible: ${{ steps.compare.outputs.eligible }}
+    steps:
+      - name: Check out the immutable workflow anchor
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.anchor }}
+          persist-credentials: false
+
+      - name: Compare anchor with current main
+        id: compare
+        env:
+          EXPECTED_ANCHOR: ${{ needs.resolve.outputs.anchor }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --force --no-tags origin \
+            '+refs/heads/main:refs/remotes/origin/main'
+          current="$(git rev-parse --verify 'refs/remotes/origin/main^{commit}')"
+          eligible=false
+          if [[ "$current" == "$EXPECTED_ANCHOR" ]]; then
+            eligible=true
+          fi
+          {
+            echo "eligible=$eligible"
+            echo "current=$current"
+          } >> "$GITHUB_OUTPUT"
+          echo "Current-main eligibility: $eligible"
+
+  verify_preflight:
+    name: Verify serialized deployment preflight
+    needs: [resolve, validate, eligibility]
+    if: >-
+      needs.eligibility.outputs.eligible == 'true' &&
+      needs.resolve.outputs.verify_only == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    concurrency:
+      group: version-service-production
+      cancel-in-progress: false
+    steps:
+      - name: Record start time
+        id: timing
+        shell: bash
+        run: echo "started=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the immutable workflow anchor
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.anchor }}
+          persist-credentials: false
+
+      - name: Verify anchor after acquiring production slot
+        uses: ./.github/actions/verify-deploy-anchor
+        with:
+          anchor: ${{ needs.resolve.outputs.anchor }}
+
+      - name: Record verification summary
+        if: always()
+        env:
+          ANCHOR: ${{ needs.resolve.outputs.anchor }}
+          CANDIDATE: ${{ needs.resolve.outputs.candidate }}
+          STARTED: ${{ steps.timing.outputs.started }}
+          OUTCOME: ${{ job.status }}
+        shell: bash
+        run: |
+          finished="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          {
+            echo "## Deployment preflight"
+            echo
+            echo "- Mode: verification only"
+            echo "- Anchor: \`$ANCHOR\`"
+            echo "- Candidate: \`$CANDIDATE\`"
+            echo "- Started: $STARTED"
+            echo "- Finished: $finished"
+            echo "- Outcome: $OUTCOME"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy edge script
+    needs: [resolve, validate, eligibility]
+    if: >-
+      needs.eligibility.outputs.eligible == 'true' &&
+      needs.resolve.outputs.verify_only == 'false' &&
+      vars.BUNNY_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: version-service-production
+      cancel-in-progress: false
+    steps:
+      - name: Record start time
+        id: timing
+        shell: bash
+        run: echo "started=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the immutable workflow anchor
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.anchor }}
+          persist-credentials: false
+
+      - name: Check out selected script revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.candidate }}
+          path: candidate
+          persist-credentials: false
+
+      - name: Validate non-secret deployment inputs
+        env:
+          BUNNY_SCRIPT_ID: ${{ vars.BUNNY_SCRIPT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$BUNNY_SCRIPT_ID" ]]; then
+            echo "::error::Repository variable BUNNY_SCRIPT_ID is not configured."
+            exit 1
+          fi
+          if [[ ! -f "candidate/packages/edge-script/src/script.mjs" ]]; then
+            echo "::error::The selected candidate script checkout is missing."
+            exit 1
+          fi
+          if [[ ! -f ".limen/production/.env.bunny-deploy.local.sops.env" ]]; then
+            echo "::error::The encrypted production Bunny deploy key is not configured."
+            exit 1
+          fi
+
+      - name: Verify anchor after acquiring production slot
+        uses: ./.github/actions/verify-deploy-anchor
+        with:
+          anchor: ${{ needs.resolve.outputs.anchor }}
+
+      - name: Reconfirm main dispatch before decryption
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Deployments must be dispatched from main."
+            exit 1
+          fi
+
+      - name: Decrypt production deployment key
+        id: limen
+        uses: sebastian-software/limen/actions/decrypt@d205ac6e27f317e8b9f3c0072d85b61879574950 # v0.10.0
+        with:
+          environment: production
+          install-token: ${{ secrets.LIMEN_INSTALL_TOKEN }}
+          limen-version: limen-cli-v0.10.0
+
+      - name: Restrict and parse deployment key
+        id: bunny_key
+        env:
+          DECRYPTED_FILES: ${{ steps.limen.outputs.decrypted }}
+        shell: bash
+        run: bash .github/scripts/prepare-bunny-deploy-key.sh
+
+      - name: Publish candidate script to Bunny
+        uses: BunnyWay/actions/deploy-script@0cae4ba05838d2707b3d5ed779f15c6bc2b43267 # v0.5.1
+        with:
+          script_id: ${{ vars.BUNNY_SCRIPT_ID }}
+          deploy_key: ${{ steps.bunny_key.outputs.deploy_key }}
+          file: candidate/packages/edge-script/src/script.mjs
+
+      - name: Probe invalid-request contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          status="$(curl --silent --show-error \
+            --connect-timeout 5 \
+            --max-time 15 \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header 'content-type: application/json' \
+            --data '{"unexpected":true}' \
+            'https://version.sebastian-software.dev/check')"
+          body="$(cat "$response_file")"
+          if [[ "$status" != "400" || "$body" != '{"error":"invalid_request"}' ]]; then
+            echo "::error::Production probe returned an unexpected status or response body."
+            exit 1
+          fi
+
+      - name: Remove decrypted deployment key
+        if: always()
+        shell: bash
+        run: rm -f -- .env.bunny-deploy.local
+
+      - name: Record deployment summary
+        if: always()
+        env:
+          ANCHOR: ${{ needs.resolve.outputs.anchor }}
+          CANDIDATE: ${{ needs.resolve.outputs.candidate }}
+          STARTED: ${{ steps.timing.outputs.started }}
+          OUTCOME: ${{ job.status }}
+        shell: bash
+        run: |
+          finished="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          {
+            echo "## Bunny deployment"
+            echo
+            echo "- Anchor: \`$ANCHOR\`"
+            echo "- Candidate: \`$CANDIDATE\`"
+            echo "- Started: $STARTED"
+            echo "- Finished: $finished"
+            echo "- Outcome: $OUTCOME"
+            echo
+            echo "The recorded SHA is operational correlation evidence, not active-revision attestation."
+          } >> "$GITHUB_STEP_SUMMARY"

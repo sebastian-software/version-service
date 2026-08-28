@@ -4,3 +4,4 @@ coverage
 *.log
 .DS_Store
 .effective-flow/
+.env.bunny-deploy.local
