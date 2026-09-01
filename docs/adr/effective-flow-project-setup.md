@@ -11,20 +11,26 @@ runtime directory and completely gitignored.
 
 ## Configuration
 
-| Key                               | Value                      |
-| --------------------------------- | -------------------------- |
-| review.profile                    | focused                    |
-| review.autoConfirmScope           | false                      |
-| review.designDecisionSources      | standard                   |
-| review.validation                 | full                       |
-| applyReview.defaultCommitStrategy | null                       |
-| applyReview.finalValidation       | full                       |
-| applyReview.stashPolicy           | interactive                |
-| applyReview.worktree.baseDir      | .effective-flow/.worktrees |
-| applyReview.worktree.setup        | auto                       |
-| worktree.enabled                  | true                       |
-| delivery.completion               | pr                         |
-| delivery.baseBranch               | origin/main                |
-| tracker.mode                      | remote                     |
-| plan.dir                          | docs/plan                  |
-| language.project                  | en                         |
+| Key                                  | Value                      |
+| ------------------------------------ | -------------------------- |
+| review.profile                       | focused                    |
+| review.autoConfirmScope              | true                       |
+| review.designDecisionSources         | standard                   |
+| review.validation                    | full                       |
+| applyReview.defaultCommitStrategy    | worktrees                  |
+| applyReview.finalValidation          | full                       |
+| applyReview.stashPolicy              | interactive                |
+| applyReview.worktree.baseDir         | .effective-flow/.worktrees |
+| applyReview.worktree.setup           | auto                       |
+| worktree.enabled                     | true                       |
+| delivery.completion                  | pr                         |
+| delivery.baseBranch                  | origin/main                |
+| delivery.prReview                    | always                     |
+| mergeGate.completion                 | merge                      |
+| mergeGate.bots                       | greptile-apps              |
+| mergeGate.bots.greptile-apps.trigger | @greptileai                |
+| mergeGate.bots.greptile-apps.check   | Greptile Review            |
+| tracker.mode                         | remote                     |
+| plan.dir                             | docs/plan                  |
+| concept.dir                          | docs/concept               |
+| language.project                     | en                         |
