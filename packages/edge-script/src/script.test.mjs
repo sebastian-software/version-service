@@ -24,7 +24,7 @@ function payload(overrides = {}) {
 }
 
 function checkRequest(body, headers = { "content-type": "application/json" }) {
-  return new Request("https://version.sebastian-software.dev/check", {
+  return new Request("https://version-service.sebastian-software.de/check", {
     method: "POST",
     headers,
     body: typeof body === "string" || body instanceof Uint8Array ? body : JSON.stringify(body),
@@ -48,12 +48,12 @@ test("enforces route, method, and media type before any upstream work", async ()
   const handle = createHandler(CONFIGURATION, implementation, () => NOW_MS);
 
   const notFound = await handle(
-    new Request("https://version.sebastian-software.dev/other", { method: "POST" }),
+    new Request("https://version-service.sebastian-software.de/other", { method: "POST" }),
   );
   assert.equal(notFound.status, 404);
 
   const wrongMethod = await handle(
-    new Request("https://version.sebastian-software.dev/check", { method: "GET" }),
+    new Request("https://version-service.sebastian-software.de/check", { method: "GET" }),
   );
   assert.equal(wrongMethod.status, 405);
   assert.equal(wrongMethod.headers.get("allow"), "POST");

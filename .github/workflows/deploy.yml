@@ -303,7 +303,7 @@ jobs:
             --request POST \
             --header 'content-type: application/json' \
             --data '{"unexpected":true}' \
-            'https://version.sebastian-software.dev/check')"
+            'https://version-service.sebastian-software.de/check')"
           body="$(cat "$response_file")"
           if [[ "$status" != "400" || "$body" != '{"error":"invalid_request"}' ]]; then
             echo "::error::Production probe returned an unexpected status or response body."
