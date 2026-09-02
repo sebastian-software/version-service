@@ -2,6 +2,7 @@
 /.github/workflows/deploy.yml @swernerx @fastner
 /.github/actions/verify-deploy-anchor/ @swernerx @fastner
 /.github/scripts/prepare-bunny-deploy-key.sh @swernerx @fastner
+/.github/scripts/probe-production-contract.sh @swernerx @fastner
 /.limen.yaml @swernerx @fastner
 /.sops.yaml @swernerx @fastner
 /.gitattributes @swernerx @fastner

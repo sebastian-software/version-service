@@ -330,11 +330,14 @@ published.
 This section belongs to issue #10. None of its application or analytics
 assertions may be reported as #9 evidence.
 
-Every successful publication automatically sends an invalid request and
-requires HTTP `400` with the exact body `{"error":"invalid_request"}`. This is
-liveness and contract evidence, not proof that Bunny is serving the recorded
-commit. A probe failure after publication leaves the new code live and marks
-the workflow run failed; disarm and roll back explicitly if necessary.
+Every successful publication automatically polls with an invalid request for up
+to 16 attempts separated by 10 seconds. Every request has bounded connection
+and total timeouts, and success requires HTTP `400` with the byte-exact body
+`{"error":"invalid_request"}`. This bounded window accommodates Bunny release
+propagation without weakening the contract. It is liveness and contract
+evidence, not proof that Bunny is serving the recorded commit. Exhausting the
+probe attempts after publication leaves the new code live and marks the
+workflow run failed; disarm and roll back explicitly if necessary.
 
 The repository test for this invalid branch proves that it does not call
 analytics. It does not prove that production Rybbit received no event. Complete
