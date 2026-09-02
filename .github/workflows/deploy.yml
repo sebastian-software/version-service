@@ -301,25 +301,13 @@ jobs:
           file: candidate/packages/edge-script/src/script.mjs
 
       - name: Probe invalid-request contract
+        env:
+          PROBE_MAX_ATTEMPTS: "16"
+          PROBE_RETRY_DELAY_SECONDS: "10"
         shell: bash
-        run: |
-          set -euo pipefail
-          response_file="$(mktemp)"
-          trap 'rm -f "$response_file"' EXIT
-          status="$(curl --silent --show-error \
-            --connect-timeout 5 \
-            --max-time 15 \
-            --output "$response_file" \
-            --write-out '%{http_code}' \
-            --request POST \
-            --header 'content-type: application/json' \
-            --data '{"unexpected":true}' \
-            'https://version-service.sebastian-software.de/check')"
-          body="$(cat "$response_file")"
-          if [[ "$status" != "400" || "$body" != '{"error":"invalid_request"}' ]]; then
-            echo "::error::Production probe returned an unexpected status or response body."
-            exit 1
-          fi
+        run: >-
+          bash .github/scripts/probe-production-contract.sh
+          https://version-service.sebastian-software.de/check
 
       - name: Remove decrypted deployment key
         if: always()
