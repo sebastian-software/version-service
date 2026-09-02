@@ -267,9 +267,20 @@ jobs:
             exit 1
           fi
 
+      - name: Check out pinned Limen decrypt action
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: sebastian-software/limen
+          ref: d205ac6e27f317e8b9f3c0072d85b61879574950 # v0.10.0
+          token: ${{ secrets.LIMEN_INSTALL_TOKEN }}
+          path: .github/actions/limen
+          sparse-checkout: actions/decrypt
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Decrypt production deployment key
         id: limen
-        uses: sebastian-software/limen/actions/decrypt@d205ac6e27f317e8b9f3c0072d85b61879574950 # v0.10.0
+        uses: ./.github/actions/limen/actions/decrypt
         with:
           environment: production
           install-token: ${{ secrets.LIMEN_INSTALL_TOKEN }}

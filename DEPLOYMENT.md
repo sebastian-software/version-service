@@ -102,9 +102,10 @@ systems:
 | GitHub | Organization secret `LIMEN_INSTALL_TOKEN`; repository variables `BUNNY_SCRIPT_ID` and `BUNNY_DEPLOY_ENABLED`; protected `main` and the `production` environment. |
 | Bunny  | The pre-created script, its script-specific deploy key, and the runtime Rybbit configuration from step 2.                                                        |
 
-`LIMEN_INSTALL_TOKEN` only gives read access to the private Limen CLI release.
-It is not a Limen authorization credential, a Bunny credential, or a substitute
-for GitHub's private cross-repository Actions sharing.
+`LIMEN_INSTALL_TOKEN` only gives read access to the private Limen repository.
+The workflow uses it to check out the pinned decrypt action and to download the
+pinned Limen CLI release. It is not a Limen authorization credential or a Bunny
+credential.
 
 ### Current repository state
 
@@ -112,10 +113,10 @@ The manual workflow, Limen mapping, SOPS policy, protected-path ownership, and
 rollout gate are checked in. This implementation also checks in the
 SOPS-encrypted production payload at
 `.limen/production/.env.bunny-deploy.local.sops.env`; its plaintext target is
-absent. The organization secret `LIMEN_INSTALL_TOKEN` and the hosted
-GitHub, Limen, and Bunny prerequisites remain outstanding until operators
-configure and verify them. Complete those prerequisites while
-`BUNNY_DEPLOY_ENABLED` is absent or not exactly `true`.
+absent. The organization secret `LIMEN_INSTALL_TOKEN` and the hosted GitHub,
+Limen, and Bunny prerequisites must be configured and verified by operators.
+Complete those prerequisites while `BUNNY_DEPLOY_ENABLED` is absent or not
+exactly `true`.
 
 ### Create the encrypted Limen payload
 
@@ -180,7 +181,7 @@ block runs `limen sync` only after the mapped encrypted source exists, allowing
 both initial bootstrap and later clones to converge without an update attempt
 against a missing source.
 
-### Authorize Limen and the private action
+### Authorize Limen and bootstrap the private action
 
 Authorize only this repository, `main`, the exact deployment workflow, and the
 `production` environment:
@@ -206,16 +207,18 @@ The event policy must permit the manual deployment event, and the runner policy
 must permit the GitHub-hosted runner used by the workflow. These server checks
 are separate from the repository allowlist.
 
-In the private `sebastian-software/limen` source repository, allow organization
-repositories to use its actions. Also verify that the organization and this
-repository's Actions policies permit the pinned
-`sebastian-software/limen/actions/decrypt` action. GitHub loads that private
-action with its own scoped installation token; `LIMEN_INSTALL_TOKEN` cannot fix
-an Actions-sharing or Actions-policy denial.
-
 Create organization secret `LIMEN_INSTALL_TOKEN` with read-only access to the
-private Limen repository's releases and expose it only to this repository. The
-workflow uses it only to download the pinned Limen CLI release.
+private Limen repository and expose it only to this repository. Because
+`version-service` is public, GitHub's native private-action sharing cannot load
+the action directly: that sharing mechanism grants access only to other private
+repositories. The workflow therefore uses the token to sparsely check out only
+`actions/decrypt` at the reviewed Limen commit, without persisting Git
+credentials, and then invokes the checked-out action locally. The same token is
+passed to that action to download the pinned Limen CLI release.
+
+Verify that the organization and this repository's Actions policies permit the
+pinned `actions/checkout` action and local actions. Do not broaden either
+repository's visibility to work around this bootstrap boundary.
 
 ### Protect the deployment surfaces
 
@@ -271,8 +274,9 @@ store it in a cache.
 1. Merge the workflow and policy files while `BUNNY_DEPLOY_ENABLED` is absent
    or not `true`. A merge to `main` must not start a deployment.
 2. Create the encrypted Limen payload, install `LIMEN_INSTALL_TOKEN`, verify
-   private-action sharing and Actions policy, configure the exact Limen
-   policies, and configure the GitHub environment and branch protection.
+   that it can read the pinned private action and CLI release, verify Actions
+   policy, configure the exact Limen policies, and configure the GitHub
+   environment and branch protection.
 3. Set `BUNNY_SCRIPT_ID`. Confirm the Bunny runtime configuration, DNS/TLS, the
    currently disabled raw request logging setting, the intentional absence of
    Bunny Shield/per-client rate limiting, and the monitoring described above.
