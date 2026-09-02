@@ -1,10 +1,20 @@
 # Deployment guide
 
-This guide takes the edge script from this repository to a live
-`https://version.sebastian-software.dev/check` endpoint. Work through it in
-order; every step is independently verifiable. Client releases (for example,
-Palamedes) must not embed the endpoint before the final verification step has
-passed.
+This guide covers the operator-controlled path to the production hostname
+`https://version-service.sebastian-software.de/check`. Work through it in order;
+every step is independently verifiable, but the work is deliberately split
+across three issues:
+
+- **#9** configures production readiness, the public hostname, privacy controls,
+  and aggregate monitoring. It does not publish this repository's application
+  code and does not prove live analytics behavior.
+- **#10** owns the first production publication and the live application,
+  analytics, and privacy contract.
+- **#11** must be re-planned before any client embeds or enables the endpoint.
+
+Completing an earlier stage never authorizes a later one. In particular, keep
+clients disabled until a newly approved #11 plan has passed its own evidence
+gate.
 
 Production code publication is manual only. Merging or pushing to `main`,
 creating a tag, or publishing a release never deploys the script. An authorized
@@ -12,9 +22,10 @@ operator starts every deployment with the GitHub **Deploy** workflow.
 
 ## Prerequisites
 
-- Bunny.net account access with permission to create Edge Scripts and manage
-  the DNS zone for `sebastian-software.dev` (domain onboarding is automated by
-  `ssoft-hosting-setup`).
+- Bunny.net account access with permission to create and configure a Standalone
+  Edge Script and its custom hostname.
+- Access to the authoritative DNS configuration for the
+  `sebastian-software.de` zone.
 - The self-hosted Rybbit instance URL, a site for CLI telemetry, and an API key
   for it (Rybbit dashboard → site settings → API keys).
 - Repository and organization administration access for GitHub Actions policy,
@@ -43,25 +54,42 @@ Script → **Env Configuration**:
 The script fails closed with `503 service_unconfigured` while any of these is
 missing, so a half-configured deployment never answers or counts checks.
 
-Check the Rybbit API rate limit before real adoption: keys are limited to 500
-requests per 10 minutes (~72k/day). Verify whether our installation can raise
-it, and revisit sink batching or one key per project when the daily request
-curve approaches that ceiling.
-
-### Abuse and rate limiting
+### Privacy, monitoring, and residual risk
 
 The endpoint is deliberately unauthenticated — any Internet client can submit
-valid-looking payloads. The blast radius is bounded (checks are advisory and
-fail silent, and the metric carries no identity), but sustained spam can
-pollute the usage distributions and exhaust the Rybbit API quota, turning the
-endpoint into `503` for honest clients. Two required mitigations:
+valid-looking payloads. Bunny Shield/per-client rate limiting is intentionally
+absent by operator decision. The previously considered 50-requests-per-10-minute
+rule and its boundary proof are not part of the active production contract.
 
-1. Enable Bunny's platform-level per-client rate limiting (Shield/edge rules)
-   on the hostname before go-live. This runs in CDN infrastructure alongside
-   TLS termination; application code still never reads or stores addresses.
-2. Treat the numbers as an advisory activity proxy: watch the Rybbit series
-   for volume anomalies and be ready to rotate the API key or tighten the
-   platform limit.
+Raw Bunny request logging is currently off. Issue #9 intentionally did not
+assess historical retention, forwarding, or permanent-storage state, and no
+claim is made that historical records were deleted or expired. Evidence must
+state only the currently observed logging configuration.
+
+The aggregate warning is provisioned in Grafana through the merged
+[Proxmox PR #116](https://git.dal12.de/fastner/proxmox/pulls/116): accepted Rybbit
+`update_check` count greater than or equal to 400 over the preceding 10 minutes,
+evaluated every minute, owned by `fastner`, and routed through the existing
+notification policy. Redacted #9 evidence must show that the Grafana/Rybbit
+datasource query succeeds, the scheduler and rule status are `ok`, the hosted
+configuration has converged, and the alert uses the existing notification path.
+Record only the rule, evaluation, routing, and aggregate result; never copy its
+bearer credential or individual event data into this repository, an issue, a
+screenshot, or an operator transcript.
+
+Uptime Kuma dashboard 42 monitors Rybbit's non-ingesting `/api/health` endpoint.
+That proves only endpoint liveness. It does not prove analytics ingestion,
+Grafana alert delivery, the version-service application contract, or the health
+of every Rybbit dependency.
+
+These controls reduce detection time but do not prevent distributed abuse,
+quota exhaustion, dependency failure, or misleading aggregate data. Operators
+must validate the aggregate signal before acting. When containment is required,
+withdraw the public custom hostname; investigate Rybbit quota or dependency
+failure separately; and rotate compromised credentials without recording their
+values. Before #11, keep clients disabled. After later client enablement, use
+the owning client's rollback or disable control in addition to server-side
+containment.
 
 ## 3. Wire GitHub deployments
 
@@ -245,32 +273,58 @@ store it in a cache.
 2. Create the encrypted Limen payload, install `LIMEN_INSTALL_TOKEN`, verify
    private-action sharing and Actions policy, configure the exact Limen
    policies, and configure the GitHub environment and branch protection.
-3. Set `BUNNY_SCRIPT_ID`. Confirm the Bunny runtime configuration, DNS/TLS,
-   disabled request logging, and Shield/rate limiting.
+3. Set `BUNNY_SCRIPT_ID`. Confirm the Bunny runtime configuration, DNS/TLS, the
+   currently disabled raw request logging setting, the intentional absence of
+   Bunny Shield/per-client rate limiting, and the monitoring described above.
 4. From current `main`, manually dispatch **Deploy** with `verify_only=true`.
    Confirm that validation and both freshness checks pass, and that the run
    never enters the environment or executes OIDC, Limen, decryption, or Bunny
    steps. Use overlapping verification runs when proving the queued freshness
    behavior.
-5. Immediately before the first real deployment, set
-   `BUNNY_DEPLOY_ENABLED=true` and dispatch **Deploy** from current `main` with
-   `verify_only=false` and blank `script_ref`.
-6. Complete steps 4 and 5 below. Leave the gate enabled only after every check
-   passes. If the run or a live check fails, set the variable to a value other
-   than `true` before diagnosing or performing an explicit rollback.
+5. **Issue #9 stops here.** It does not arm or execute an application
+   publication. Issue #10 must not start until the repository change that
+   corrects the deployment probe to the `.de` production hostname has been
+   merged. It must then re-check the recorded provider state, set
+   `BUNNY_DEPLOY_ENABLED=true` immediately before the first real deployment,
+   and dispatch **Deploy** from current `main` with `verify_only=false` and blank
+   `script_ref`.
+6. Under #10, complete the live contract below. Leave the gate enabled only
+   after every #10 check passes. If the run or a live check fails, set the
+   variable to a value other than `true` before diagnosing or performing an
+   explicit rollback. This disarms future publications; it does not remove an
+   already public hostname or already published code.
 
 Future changes still require a new manual dispatch; merging to `main` never
 publishes them.
 
 ## 4. Attach the hostname
 
-1. Script settings → hostnames: add `version.sebastian-software.dev`.
-2. DNS: CNAME `version.sebastian-software.dev` to the script's default
-   hostname (via `ssoft-hosting-setup` or manually in the Bunny DNS zone).
+The authoritative operational path is the Bunny dashboard's **Standalone Edge
+Script → custom hostname** flow plus the authoritative
+`sebastian-software.de` DNS zone. Do not describe a Bunny Pull Zone or an
+account-wide Bunny API mutation as authoritative for this service. Hosting
+automation is not implemented; it is tracked separately in
+[ssoft-hosting-setup issue #86](https://github.com/sebastian-software/ssoft-hosting-setup/issues/86).
+
+1. Script settings → hostnames: add `version-service.sebastian-software.de`.
+2. In the authoritative `sebastian-software.de` zone, create the required DNS
+   record for the custom-host flow and verify the resolved target. Until issue
+   #86 is implemented, this is a manual operator action.
 3. Issue or confirm the TLS certificate in the same settings screen and wait
-   for `https://version.sebastian-software.dev` to serve it.
+   for `https://version-service.sebastian-software.de` to serve it.
+4. Record DNS, certificate coverage and expiry, HTTPS reachability, current raw
+   logging-off state, intentional Shield absence, Grafana rule state, and
+   Uptime Kuma dashboard/monitor state. Redact credentials, raw addresses,
+   user agents, request logs, and individual analytics records.
+
+The hostname can exist while Bunny still serves its starter. That is #9
+provider evidence, not evidence that this repository's application has been
+published.
 
 ## 5. Verify the live contract
+
+This section belongs to issue #10. None of its application or analytics
+assertions may be reported as #9 evidence.
 
 Every successful publication automatically sends an invalid request and
 requires HTTP `400` with the exact body `{"error":"invalid_request"}`. This is
@@ -283,7 +337,7 @@ analytics. It does not prove that production Rybbit received no event. Complete
 all of the following checks before any client release embeds the endpoint:
 
 ```bash
-curl -sS -X POST https://version.sebastian-software.dev/check \
+curl -sS -X POST https://version-service.sebastian-software.de/check \
   -H "content-type: application/json" \
   -d '{"project":"palamedes","version":"1.0.0","os":"linux","arch":"x86_64","ci":false,"installedSince":"2026-08"}'
 ```
@@ -295,24 +349,32 @@ curl -sS -X POST https://version.sebastian-software.dev/check \
 3. The valid request produces one `update_check` event in Rybbit with the six
    aggregate properties, no client IP-derived geo data, and the fixed
    `version-service` user agent. The invalid request produces no Rybbit event.
-4. Bunny request logging and observability remain off, and Rybbit shows no
-   identifying fields.
+4. Raw Bunny request logging remains off, and Rybbit shows no identifying
+   fields. Do not turn this current-state check into a claim about unassessed
+   historical retention, forwarding, permanent storage, deletion, or expiry.
 5. DNS and TLS resolve correctly for the production hostname.
-6. Bunny Shield or the equivalent edge rate limit is active and behaves as
-   configured.
+6. Grafana's aggregate warning and Uptime Kuma's liveness monitor still match
+   the #9 contract. Neither substitutes for the valid/invalid request evidence
+   above.
 
 Record the candidate SHA and workflow timestamps for operational correlation,
 but do not treat them as active-revision attestation.
 
 ## 6. Enable clients
 
-Per project, after step 5:
+Issue #11 must be re-planned and approved before any project embeds or enables
+the endpoint. Passing #10 does not authorize a client release. The intended
+future wiring is recorded only as context for that re-planning:
 
 - **Palamedes**: build the release with
-  `PALAMEDES_UPDATE_ENDPOINT=https://version.sebastian-software.dev/check`.
+  `PALAMEDES_UPDATE_ENDPOINT=https://version-service.sebastian-software.de/check`.
   Any other value fails the build (see ADR-027 in the Palamedes repository).
 - Future Node CLIs use the planned `@sebastian-software/update-check` package
   from this repository.
+
+Before #11 completes, keep every client-owned endpoint switch disabled. After
+later enablement, incident response must use the owning client's rollback or
+disable mechanism as well as any server-side hostname withdrawal.
 
 ## Adding another project
 
@@ -325,6 +387,12 @@ Per project, after step 5:
    `DO_NOT_TRACK` and per-tool opt-outs.
 
 ## Rollback
+
+Before #10 publishes the application, there is no version-service application
+revision to roll back. Containment under #9 is withdrawal of the public custom
+hostname while preserving redacted evidence for diagnosis. Disarming
+`BUNNY_DEPLOY_ENABLED` prevents another publication but does not contain an
+already public service.
 
 The rollback candidate may be any ancestor of the current `main` anchor; there
 is deliberately no minimum version or allowlist. Before rollback, inspect the
@@ -342,6 +410,10 @@ always come from the current `main` anchor; only the selected script comes from
 the historical commit. After publication, complete the entire live contract
 and privacy checklist above. To restore current `main`, dispatch the workflow
 again with blank `script_ref` and repeat the checklist.
+
+After #11 has enabled a client, also invoke that client's owned rollback or
+disable control. Do not assume that server rollback or hostname withdrawal
+immediately reaches clients with cached configuration.
 
 ## Rotate or respond to compromise
 
@@ -361,6 +433,9 @@ overlap period between old and new keys:
 
 Treat a compromised script deploy key as a production-code compromise. Disarm
 deployment and rotate the key, then use an authorized operator credential to
-inspect active Bunny code and deployment history. Rotate any Bunny runtime
-secret, including Rybbit credentials, that malicious replacement code could
-have read or exfiltrated before re-arming deployment.
+inspect active Bunny code and deployment history. If containment is required,
+withdraw the public custom hostname as well; the deployment gate alone does not
+remove active code. Rotate any Bunny runtime secret, including Rybbit
+credentials, that malicious replacement code could have read or exfiltrated
+before re-arming deployment. Never record old or replacement credential values
+in commits, issues, evidence, screenshots, or transcripts.
