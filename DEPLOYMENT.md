@@ -354,13 +354,19 @@ curl -sS -X POST https://version-service.sebastian-software.de/check \
 2. An invalid payload, such as `{"unexpected":true}`, returns HTTP `400` with
    exactly `{"error":"invalid_request"}`; `GET` returns `405`.
 3. The valid request produces one `update_check` event in Rybbit with the six
-   aggregate properties, no client IP-derived geo data, and the fixed
-   `version-service` user agent. The invalid request produces no Rybbit event.
-4. Raw Bunny request logging remains off, and Rybbit shows no identifying
+   aggregate properties and no client IP-derived geo, browser, or operating
+   system data. The invalid request produces no Rybbit event. Rybbit does not
+   expose the raw user-agent value in its dashboard or events API, so do not
+   report the literal value as live Rybbit evidence.
+4. The repository's automated edge-script test proves that the server-side
+   event sent to Rybbit pins the transport identity to IP address `127.0.0.1`
+   and user agent `version-service`. Treat this test together with Rybbit's
+   live absence of client-derived identity as the privacy-contract evidence.
+5. Raw Bunny request logging remains off, and Rybbit shows no identifying
    fields. Do not turn this current-state check into a claim about unassessed
    historical retention, forwarding, permanent storage, deletion, or expiry.
-5. DNS and TLS resolve correctly for the production hostname.
-6. Grafana's aggregate warning and Uptime Kuma's liveness monitor still match
+6. DNS and TLS resolve correctly for the production hostname.
+7. Grafana's aggregate warning and Uptime Kuma's liveness monitor still match
    the #9 contract. Neither substitutes for the valid/invalid request evidence
    above.
 
