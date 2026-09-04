@@ -341,32 +341,255 @@ workflow run failed; disarm and roll back explicitly if necessary.
 
 The repository test for this invalid branch proves that it does not call
 analytics. It does not prove that production Rybbit received no event. Complete
-all of the following checks before any client release embeds the endpoint:
+all of the following checks before any client release embeds the endpoint.
+
+### Reserve one synthetic request
+
+Use exactly one fresh six-field tuple for each verification attempt. Mint it in
+one shell and keep that shell open through the request. The timestamped
+`version` makes the tuple distinguishable from real clients; the other values
+are valid but explicitly synthetic:
 
 ```bash
-curl -sS -X POST https://version-service.sebastian-software.de/check \
-  -H "content-type: application/json" \
-  -d '{"project":"palamedes","version":"1.0.0","os":"linux","arch":"x86_64","ci":false,"installedSince":"2026-08"}'
+verification_id="$(date -u +'%Y%m%d%H%M%S')"
+synthetic_version="0.0.0-live.${verification_id}"
+synthetic_os="verification"
+synthetic_arch="synthetic_x86_64"
+synthetic_installed_since="$(date -u +'%Y-%m')"
+request_body="$(printf \
+  '{"project":"palamedes","version":"%s","os":"%s","arch":"%s","ci":true,"installedSince":"%s"}' \
+  "$synthetic_version" "$synthetic_os" "$synthetic_arch" "$synthetic_installed_since")"
+printf '%s\n' "$request_body"
 ```
 
-1. The call above returns `200` with `{"latestVersion":"…"}` matching the
-   current `@palamedes/cli` version on npm.
-2. An invalid payload, such as `{"unexpected":true}`, returns HTTP `400` with
-   exactly `{"error":"invalid_request"}`; `GET` returns `405`.
-3. The valid request produces one `update_check` event in Rybbit with the six
-   aggregate properties and no client IP-derived geo, browser, or operating
-   system data. The invalid request produces no Rybbit event. Rybbit does not
-   expose the raw user-agent value in its dashboard or events API, so do not
-   report the literal value as live Rybbit evidence.
-4. The repository's automated edge-script test proves that the server-side
+Record the printed request before continuing. Its exact stored Rybbit mapping
+must be:
+
+| Request field    | Request value                | Stored property  | Stored value                 |
+| ---------------- | ---------------------------- | ---------------- | ---------------------------- |
+| `project`        | `palamedes`                  | `project`        | `palamedes`                  |
+| `version`        | `$synthetic_version`         | `version`        | `$synthetic_version`         |
+| `os`             | `verification`               | `os`             | `verification`               |
+| `arch`           | `synthetic_x86_64`           | `arch`           | `synthetic_x86_64`           |
+| `ci`             | `true`                       | `mode`           | `ci`                         |
+| `installedSince` | `$synthetic_installed_since` | `installedSince` | `$synthetic_installed_since` |
+
+The request contains `ci`; the stored event contains `mode` instead. Do not
+filter Rybbit for a `ci` property. Never reuse a previously sent or reserved
+tuple. In particular, do not reuse the earlier `version` value
+`0.0.0-verification.11.2`. A tuple is consumed when it is reserved, even if a
+later guard stops the request before it is sent.
+
+### Precompute the inclusive visibility range
+
+Choose an expected UTC send time far enough in the future to finish the zero
+baseline. Derive its five-minute visibility deadline, then convert both
+boundaries to calendar dates in `Europe/Berlin`. Replace only the expected UTC
+instant below; it must end in `Z`:
+
+```bash
+precompute_visibility_range() {
+  expected_request_utc="REPLACE_WITH_EXPECTED_UTC_INSTANT"
+  if ! expected_deadline_utc="$(node -e \
+    'const value = Date.parse(process.argv[1]); if (!Number.isFinite(value)) throw new Error("invalid UTC instant"); console.log(new Date(value + 5 * 60 * 1000).toISOString().replace(".000Z", "Z"));' \
+    "$expected_request_utc")"; then
+    printf 'Could not derive the expected deadline.\n' >&2
+    return 1
+  fi
+
+  if ! IFS=$'\t' read -r start_date end_date time_zone < <(node -e '
+    const [start, end] = process.argv.slice(1).map((value) => new Date(value));
+    if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf())) {
+      throw new Error("invalid UTC boundary");
+    }
+    const timeZone = "Europe/Berlin";
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const day = (value) => {
+      const parts = Object.fromEntries(
+        formatter.formatToParts(value).map(({ type, value: part }) => [type, part]),
+      );
+      return `${parts.year}-${parts.month}-${parts.day}`;
+    };
+    console.log(`${day(start)}\t${day(end)}\t${timeZone}`);
+  ' "$expected_request_utc" "$expected_deadline_utc"); then
+    printf 'Could not derive the Berlin visibility range.\n' >&2
+    return 1
+  fi
+
+  if [[ -z "$start_date" || -z "$end_date" || "$time_zone" != "Europe/Berlin" ]]; then
+    printf 'The Berlin visibility range is incomplete.\n' >&2
+    return 1
+  fi
+
+  printf 'start_date=%s\nend_date=%s\ntime_zone=%s\n' \
+    "$start_date" "$end_date" "$time_zone"
+}
+precompute_visibility_range
+```
+
+If `precompute_visibility_range` reports an error or returns non-zero, consume
+the tuple and stop before the zero baseline. Do not rerun the function with the
+same tuple.
+
+`start_date` and `end_date` are inclusive. The explicit time zone is part of
+the query contract; do not derive either date in the workstation's local time
+zone. As a regression check, inputs `2026-09-03T22:21:00Z` and
+`2026-09-03T22:26:00Z` must both format as `2026-09-04` in `Europe/Berlin`, so
+the output is `start_date=2026-09-04`, `end_date=2026-09-04`, and
+`time_zone=Europe/Berlin`.
+
+### Establish a zero baseline
+
+Using the existing operator Rybbit query mechanism, query the precomputed range
+with exact equality filters for all of the following. Do not invent a different
+API path or copy credentials into the evidence:
+
+| Query input               | Exact value                  |
+| ------------------------- | ---------------------------- |
+| `start_date`              | `$start_date`                |
+| `end_date`                | `$end_date`                  |
+| `time_zone`               | `Europe/Berlin`              |
+| `event_name`              | `update_check`               |
+| property `project`        | `palamedes`                  |
+| property `version`        | `$synthetic_version`         |
+| property `os`             | `verification`               |
+| property `arch`           | `synthetic_x86_64`           |
+| property `mode`           | `ci`                         |
+| property `installedSince` | `$synthetic_installed_since` |
+
+The baseline must unambiguously return zero events. Keep the date range,
+timezone, event name, and all six property filters unchanged for every later
+poll. A non-zero baseline, an unavailable filter, or an ambiguous count
+consumes the tuple: stop without sending and restart from a newly minted tuple.
+
+### Send once and capture the acknowledgement
+
+Immediately before the single valid request, record the actual UTC instant,
+derive its actual five-minute deadline, and convert both boundaries with the
+same timezone-aware formatter. The block sends only when the actual inclusive
+date range still equals the precomputed one. It captures the client HTTP status
+and body separately and does not retry:
+
+```bash
+{
+  actual_request_utc="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  actual_deadline_utc="$(node -e \
+    'const value = Date.parse(process.argv[1]); if (!Number.isFinite(value)) throw new Error("invalid UTC instant"); console.log(new Date(value + 5 * 60 * 1000).toISOString().replace(".000Z", "Z"));' \
+    "$actual_request_utc")" || actual_deadline_utc=""
+  actual_start_date=""
+  actual_end_date=""
+  actual_time_zone=""
+  range_status=0
+  IFS=$'\t' read -r actual_start_date actual_end_date actual_time_zone < <(node -e '
+    const [start, end] = process.argv.slice(1).map((value) => new Date(value));
+    if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf())) {
+      throw new Error("invalid UTC boundary");
+    }
+    const timeZone = "Europe/Berlin";
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const day = (value) => {
+      const parts = Object.fromEntries(
+        formatter.formatToParts(value).map(({ type, value: part }) => [type, part]),
+      );
+      return `${parts.year}-${parts.month}-${parts.day}`;
+    };
+    console.log(`${day(start)}\t${day(end)}\t${timeZone}`);
+  ' "$actual_request_utc" "$actual_deadline_utc") || range_status=$?
+
+  printf 'actual_request_utc=%s\nactual_deadline_utc=%s\n' \
+    "$actual_request_utc" "$actual_deadline_utc"
+  if [[ -z "$actual_deadline_utc" || "$range_status" -ne 0 || \
+        "$actual_start_date" != "$start_date" || \
+        "$actual_end_date" != "$end_date" || \
+        "$actual_time_zone" != "$time_zone" ]]; then
+    printf 'Date range changed; consume this tuple and stop without sending.\n' >&2
+  else
+    (
+      response_body="$(mktemp)"
+      trap 'rm -f -- "$response_body"' EXIT
+      curl_exit=0
+      http_status="$(curl --silent --show-error \
+        --output "$response_body" \
+        --write-out '%{http_code}' \
+        --request POST \
+        https://version-service.sebastian-software.de/check \
+        --header 'content-type: application/json' \
+        --data "$request_body")" || curl_exit=$?
+      printf 'curl_exit=%s\nHTTP status=%s\nResponse body=' \
+        "$curl_exit" "$http_status"
+      cat "$response_body"
+      printf '\n'
+      rm -f -- "$response_body"
+      trap - EXIT
+    )
+  fi
+}
+```
+
+Record all four outputs separately: actual request time, actual deadline, HTTP
+status, and response body. The expected client result is curl exit `0`, HTTP
+`200`, and `{"latestVersion":"…"}` matching the current `@palamedes/cli`
+version on npm. Any send attempt consumes the tuple, including a connection
+failure or unexpected response. Do not resend it.
+
+The outer brace group keeps `actual_request_utc` and `actual_deadline_utc` in
+the open operator shell for polling. The inner subshell scopes the response
+file trap; it removes the file explicitly and clears the trap after a normal
+request, while an interruption still removes the exact `mktemp` path.
+
+HTTP success proves only that version-service received Rybbit HTTP `200` with a
+body of at most 1 KiB that parses as an object whose sole property is
+`"success": true`, then returned the version response. Discard messages,
+additional acknowledgement properties, other status codes, malformed bodies,
+and oversized bodies fail closed as `analytics_unavailable`. Even the accepted
+acknowledgement does not prove that the event is stored or visible in Rybbit.
+Conversely, a visible event does not excuse a failed or malformed client
+response. Both checks must pass.
+
+### Poll through the actual deadline
+
+After the request, poll with the unchanged zero-baseline query through
+`actual_deadline_utc`. Keep polling even if one event appears early, and make a
+final query no earlier than the deadline so a delayed duplicate is observable.
+The final result must contain exactly one `update_check` event whose custom
+properties are exactly the six stored values in the mapping table. The event
+must have no client IP-derived geo, browser, or operating-system identity.
+
+Zero events at the deadline is missing evidence; more than one is duplicate
+ingestion. A result whose exact count or property set cannot be established is
+ambiguous. A wrong event name, value, property name, client response, or
+identity field is a contract mismatch. Each outcome consumes the tuple and
+stops the verification; do not change the range, relax a filter, or resend.
+Only exactly one matching event plus the expected client acknowledgement
+passes this proof. Rybbit does not expose the raw user-agent value in its
+dashboard or events API, so do not report the literal value as live Rybbit
+evidence.
+
+Then complete the remaining checks:
+
+1. An invalid payload, such as `{"unexpected":true}`, returns HTTP `400` with
+   exactly `{"error":"invalid_request"}`; `GET` returns `405`. Confirm that
+   the invalid request produces no Rybbit event. If concurrent traffic makes
+   that absence ambiguous, stop rather than claiming it.
+2. The repository's automated edge-script test proves that the server-side
    event sent to Rybbit pins the transport identity to IP address `127.0.0.1`
    and user agent `version-service`. Treat this test together with Rybbit's
    live absence of client-derived identity as the privacy-contract evidence.
-5. Raw Bunny request logging remains off, and Rybbit shows no identifying
+3. Raw Bunny request logging remains off, and Rybbit shows no identifying
    fields. Do not turn this current-state check into a claim about unassessed
    historical retention, forwarding, permanent storage, deletion, or expiry.
-6. DNS and TLS resolve correctly for the production hostname.
-7. Grafana's aggregate warning and Uptime Kuma's liveness monitor still match
+4. DNS and TLS resolve correctly for the production hostname.
+5. Grafana's aggregate warning and Uptime Kuma's liveness monitor still match
    the #9 contract. Neither substitutes for the valid/invalid request evidence
    above.
 

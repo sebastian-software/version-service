@@ -11,6 +11,7 @@
 // client's.
 
 const REQUEST_BODY_LIMIT = 1024;
+const ANALYTICS_ACKNOWLEDGEMENT_BODY_LIMIT = 1024;
 const UPSTREAM_TIMEOUT_MS = 1500;
 const VERSION_TTL_MS = 10 * 60 * 1000;
 const OLDEST_COHORT = "2020-01";
@@ -125,10 +126,25 @@ async function countRequest(state, payload) {
       }),
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    return sinkResponse.ok;
+    if (sinkResponse.status !== 200 || !sinkResponse.body) return false;
+
+    const bytes = await readLimitedBody(
+      sinkResponse.body.getReader(),
+      ANALYTICS_ACKNOWLEDGEMENT_BODY_LIMIT,
+    );
+    if (bytes === null) return false;
+
+    const acknowledgement = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    return isSuccessfulAnalyticsAcknowledgement(acknowledgement);
   } catch {
     return false;
   }
+}
+
+function isSuccessfulAnalyticsAcknowledgement(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return keys.length === 1 && keys[0] === "success" && value.success === true;
 }
 
 async function readPayload(request) {
@@ -136,7 +152,7 @@ async function readPayload(request) {
   if (Number.isFinite(declaredLength) && declaredLength > REQUEST_BODY_LIMIT) return null;
   if (!request.body) return null;
 
-  const bytes = await readLimitedBody(request.body.getReader());
+  const bytes = await readLimitedBody(request.body.getReader(), REQUEST_BODY_LIMIT);
   if (bytes === null) return null;
   try {
     return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
@@ -145,7 +161,7 @@ async function readPayload(request) {
   }
 }
 
-async function readLimitedBody(reader) {
+async function readLimitedBody(reader, limit) {
   const chunks = [];
   let length = 0;
   try {
@@ -153,7 +169,7 @@ async function readLimitedBody(reader) {
       const { done, value } = await reader.read();
       if (done) break;
       length += value.byteLength;
-      if (length > REQUEST_BODY_LIMIT) {
+      if (length > limit) {
         await reader.cancel();
         return null;
       }
