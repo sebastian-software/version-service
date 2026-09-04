@@ -388,34 +388,53 @@ boundaries to calendar dates in `Europe/Berlin`. Replace only the expected UTC
 instant below; it must end in `Z`:
 
 ```bash
-expected_request_utc="REPLACE_WITH_EXPECTED_UTC_INSTANT"
-expected_deadline_utc="$(node -e \
-  'const value = Date.parse(process.argv[1]); if (!Number.isFinite(value)) throw new Error("invalid UTC instant"); console.log(new Date(value + 5 * 60 * 1000).toISOString().replace(".000Z", "Z"));' \
-  "$expected_request_utc")"
+precompute_visibility_range() {
+  expected_request_utc="REPLACE_WITH_EXPECTED_UTC_INSTANT"
+  if ! expected_deadline_utc="$(node -e \
+    'const value = Date.parse(process.argv[1]); if (!Number.isFinite(value)) throw new Error("invalid UTC instant"); console.log(new Date(value + 5 * 60 * 1000).toISOString().replace(".000Z", "Z"));' \
+    "$expected_request_utc")"; then
+    printf 'Could not derive the expected deadline.\n' >&2
+    return 1
+  fi
 
-IFS=$'\t' read -r start_date end_date time_zone < <(node -e '
-  const [start, end] = process.argv.slice(1).map((value) => new Date(value));
-  if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf())) {
-    throw new Error("invalid UTC boundary");
-  }
-  const timeZone = "Europe/Berlin";
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const day = (value) => {
-    const parts = Object.fromEntries(
-      formatter.formatToParts(value).map(({ type, value: part }) => [type, part]),
-    );
-    return `${parts.year}-${parts.month}-${parts.day}`;
-  };
-  console.log(`${day(start)}\t${day(end)}\t${timeZone}`);
-' "$expected_request_utc" "$expected_deadline_utc")
-printf 'start_date=%s\nend_date=%s\ntime_zone=%s\n' \
-  "$start_date" "$end_date" "$time_zone"
+  if ! IFS=$'\t' read -r start_date end_date time_zone < <(node -e '
+    const [start, end] = process.argv.slice(1).map((value) => new Date(value));
+    if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf())) {
+      throw new Error("invalid UTC boundary");
+    }
+    const timeZone = "Europe/Berlin";
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const day = (value) => {
+      const parts = Object.fromEntries(
+        formatter.formatToParts(value).map(({ type, value: part }) => [type, part]),
+      );
+      return `${parts.year}-${parts.month}-${parts.day}`;
+    };
+    console.log(`${day(start)}\t${day(end)}\t${timeZone}`);
+  ' "$expected_request_utc" "$expected_deadline_utc"); then
+    printf 'Could not derive the Berlin visibility range.\n' >&2
+    return 1
+  fi
+
+  if [[ -z "$start_date" || -z "$end_date" || "$time_zone" != "Europe/Berlin" ]]; then
+    printf 'The Berlin visibility range is incomplete.\n' >&2
+    return 1
+  fi
+
+  printf 'start_date=%s\nend_date=%s\ntime_zone=%s\n' \
+    "$start_date" "$end_date" "$time_zone"
+}
+precompute_visibility_range
 ```
+
+If `precompute_visibility_range` reports an error or returns non-zero, consume
+the tuple and stop before the zero baseline. Do not rerun the function with the
+same tuple.
 
 `start_date` and `end_date` are inclusive. The explicit time zone is part of
 the query contract; do not derive either date in the workstation's local time
