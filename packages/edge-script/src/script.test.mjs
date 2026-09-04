@@ -31,14 +31,24 @@ function checkRequest(body, headers = { "content-type": "application/json" }) {
   });
 }
 
-function stubFetch({ npmVersion = "1.18.0", npmStatus = 200, rybbitStatus = 200 } = {}) {
+function stubFetch({
+  npmVersion = "1.18.0",
+  npmStatus = 200,
+  rybbitStatus = 200,
+  rybbitBody = '{"success":true}',
+  rybbitHeaders,
+  rybbitResponse,
+} = {}) {
   const calls = [];
   const implementation = async (url, options = {}) => {
     calls.push({ url: String(url), options });
     if (String(url).startsWith("https://registry.npmjs.org/")) {
       return new Response(JSON.stringify({ version: npmVersion }), { status: npmStatus });
     }
-    return new Response("{}", { status: rybbitStatus });
+    return (
+      rybbitResponse?.() ??
+      new Response(rybbitBody, { status: rybbitStatus, headers: rybbitHeaders })
+    );
   };
   return { calls, implementation };
 }
@@ -169,6 +179,138 @@ test("does not answer a request it cannot count", async () => {
 
   assert.equal(result.status, 503);
   assert.deepEqual(await result.json(), { error: "analytics_unavailable" });
+});
+
+test("rejects Rybbit discard responses even when the sink returns HTTP 200", async () => {
+  const discardBodies = [
+    "Site over monthly limit, event not tracked",
+    '{"success":true,"message":"Event not tracked - bot detected using isbot"}',
+    '{"success":true,"message":"Event not tracked - bot detected using header heuristics"}',
+    '{"success":true,"message":"Event not tracked - bot detected using client signals"}',
+    '{"success":true,"message":"Event not tracked - bot detected using desktop 800x600"}',
+    '{"success":true,"message":"Event not tracked - IP excluded"}',
+    '{"success":true,"message":"Event not tracked - country excluded"}',
+  ];
+
+  for (const rybbitBody of discardBodies) {
+    const { implementation } = stubFetch({ rybbitBody });
+    const handle = createHandler(CONFIGURATION, implementation, () => NOW_MS);
+    const result = await handle(checkRequest(payload()));
+
+    assert.equal(result.status, 503, `accepted discard body: ${rybbitBody}`);
+    assert.deepEqual(await result.json(), { error: "analytics_unavailable" });
+  }
+});
+
+test("rejects malformed or unexpected Rybbit acknowledgement bodies", async () => {
+  const invalidBodies = [
+    null,
+    "",
+    "not json",
+    new Uint8Array([0xff]),
+    '{"success":false}',
+    "null",
+    "true",
+    "1",
+    '"success"',
+    "[]",
+    '[{"success":true}]',
+    "{}",
+    '{"success":true,"message":"tracked"}',
+  ];
+
+  for (const rybbitBody of invalidBodies) {
+    const { implementation } = stubFetch({ rybbitBody });
+    const handle = createHandler(CONFIGURATION, implementation, () => NOW_MS);
+    const result = await handle(checkRequest(payload()));
+
+    assert.equal(result.status, 503, `accepted body: ${String(rybbitBody)}`);
+    assert.deepEqual(await result.json(), { error: "analytics_unavailable" });
+  }
+});
+
+test("requires HTTP 200 for a valid Rybbit acknowledgement", async () => {
+  const { implementation } = stubFetch({ rybbitStatus: 201 });
+  const handle = createHandler(CONFIGURATION, implementation, () => NOW_MS);
+
+  const result = await handle(checkRequest(payload()));
+
+  assert.equal(result.status, 503);
+  assert.deepEqual(await result.json(), { error: "analytics_unavailable" });
+});
+
+test("fails closed when the Rybbit acknowledgement stream cannot be read", async () => {
+  const { implementation } = stubFetch({
+    rybbitResponse: () =>
+      new Response(
+        new ReadableStream({
+          pull() {
+            throw new Error("stream failed");
+          },
+        }),
+        { status: 200 },
+      ),
+  });
+  const handle = createHandler(CONFIGURATION, implementation, () => NOW_MS);
+
+  const result = await handle(checkRequest(payload()));
+
+  assert.equal(result.status, 503);
+  assert.deepEqual(await result.json(), { error: "analytics_unavailable" });
+});
+
+test("accepts a valid chunked Rybbit acknowledgement of exactly 1024 bytes", async () => {
+  const bytes = new TextEncoder().encode(`${" ".repeat(1008)}{"success":true}`);
+  assert.equal(bytes.byteLength, 1024);
+  const { implementation } = stubFetch({
+    rybbitResponse: () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(bytes.slice(0, 511));
+            controller.enqueue(bytes.slice(511));
+            controller.close();
+          },
+        }),
+        { status: 200 },
+      ),
+  });
+  const handle = createHandler(CONFIGURATION, implementation, () => NOW_MS);
+
+  const result = await handle(checkRequest(payload()));
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(await result.json(), { latestVersion: "1.18.0" });
+});
+
+test("rejects a 1025-byte Rybbit acknowledgement despite Content-Length", async () => {
+  const bytes = new TextEncoder().encode(`${" ".repeat(1009)}{"success":true}`);
+  assert.equal(bytes.byteLength, 1025);
+
+  for (const rybbitHeaders of [undefined, { "Content-Length": "16" }]) {
+    const { implementation } = stubFetch({
+      rybbitResponse: () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(bytes.slice(0, 512));
+              controller.enqueue(bytes.slice(512));
+              controller.close();
+            },
+          }),
+          { status: 200, headers: rybbitHeaders },
+        ),
+    });
+    const handle = createHandler(CONFIGURATION, implementation, () => NOW_MS);
+    const result = await handle(checkRequest(payload()));
+
+    assert.equal(
+      result.status,
+      503,
+      `accepted overflow with Content-Length ${rybbitHeaders?.["Content-Length"] ?? "missing"}`,
+    );
+    assert.deepEqual(await result.json(), { error: "analytics_unavailable" });
+  }
 });
 
 test("caches the released version and refreshes it after the TTL", async () => {
