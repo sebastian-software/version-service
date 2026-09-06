@@ -2,19 +2,23 @@
 
 This guide covers the operator-controlled path to the production hostname
 `https://version-service.sebastian-software.de/check`. Work through it in order;
-every step is independently verifiable, but the work is deliberately split
-across three issues:
+every step is independently verifiable. The initial rollout was deliberately
+split across three issues:
 
 - **#9** configures production readiness, the public hostname, privacy controls,
   and aggregate monitoring. It does not publish this repository's application
   code and does not prove live analytics behavior.
 - **#10** owns the first production publication and the live application,
   analytics, and privacy contract.
-- **#11** must be re-planned before any client embeds or enables the endpoint.
+- **#11** verified the deployed service for client adoption with a fresh
+  production tuple and the supported Rybbit/native-Curl procedure below.
 
-Completing an earlier stage never authorizes a later one. In particular, keep
-clients disabled until a newly approved #11 plan has passed its own evidence
-gate.
+The application is deployed, and its #11 production contract verification is
+complete. The deployment candidate associated with that successful verification
+was `04b56723d03c28e9b94a4db9fbbc57a2ee1a3940`; this association is operational
+correlation, not attestation of the active Bunny revision. Client integration,
+release, and rollback remain owned by each client repository; this deployment
+guide does not authorize a client release.
 
 Production code publication is manual only. Merging or pushing to `main`,
 creating a tag, or publishing a release never deploys the script. An authorized
@@ -87,9 +91,8 @@ quota exhaustion, dependency failure, or misleading aggregate data. Operators
 must validate the aggregate signal before acting. When containment is required,
 withdraw the public custom hostname; investigate Rybbit quota or dependency
 failure separately; and rotate compromised credentials without recording their
-values. Before #11, keep clients disabled. After later client enablement, use
-the owning client's rollback or disable control in addition to server-side
-containment.
+values. For an enabled client, use the owning client's rollback or disable
+control in addition to server-side containment.
 
 ## 3. Wire GitHub deployments
 
@@ -114,9 +117,10 @@ rollout gate are checked in. This implementation also checks in the
 SOPS-encrypted production payload at
 `.limen/production/.env.bunny-deploy.local.sops.env`; its plaintext target is
 absent. The organization secret `LIMEN_INSTALL_TOKEN` and the hosted GitHub,
-Limen, and Bunny prerequisites must be configured and verified by operators.
-Complete those prerequisites while `BUNNY_DEPLOY_ENABLED` is absent or not
-exactly `true`.
+Limen, and Bunny prerequisites are configured for the current production
+deployment. Operators must reverify them before a future publication.
+Configure a new environment or repair drift only while
+`BUNNY_DEPLOY_ENABLED` is absent or not exactly `true`.
 
 ### Create the encrypted Limen payload
 
@@ -227,11 +231,10 @@ Create a GitHub `production` environment that accepts deployments only from
 workflow is the production authorization event.
 
 Protect `main` with pull requests, at least one non-author approval, stale
-approval dismissal, required code-owner review, required repository checks,
-blocked force pushes and deletions, and no bypass actors. Confirm that GitHub
-recognizes both `@swernerx` and `@fastner` as code owners. `.github/CODEOWNERS`
-assigns those two owners to itself, the deployment workflow, the shared
-freshness action, and all Limen-sensitive paths.
+approval dismissal, required repository checks, and blocked force pushes and
+deletions. Configured pull-request bypass remains allowed, and an
+`@swernerx` review is not required. Keep the protected deployment and Limen
+paths covered by the repository's current ownership policy.
 
 Set these repository variables while leaving deployment disarmed:
 
@@ -285,15 +288,13 @@ store it in a cache.
    never enters the environment or executes OIDC, Limen, decryption, or Bunny
    steps. Use overlapping verification runs when proving the queued freshness
    behavior.
-5. **Issue #9 stops here.** It does not arm or execute an application
-   publication. Issue #10 must not start until the repository change that
-   corrects the deployment probe to the `.de` production hostname has been
-   merged. It must then re-check the recorded provider state, set
-   `BUNNY_DEPLOY_ENABLED=true` immediately before the first real deployment,
-   and dispatch **Deploy** from current `main` with `verify_only=false` and blank
-   `script_ref`.
-6. Under #10, complete the live contract below. Leave the gate enabled only
-   after every #10 check passes. If the run or a live check fails, set the
+5. For a production publication, re-check the recorded provider state, set
+   `BUNNY_DEPLOY_ENABLED=true` immediately before the run, and dispatch
+   **Deploy** from current `main` with `verify_only=false`. Leave `script_ref`
+   blank for current `main`, or supply a reviewed full SHA for an intentional
+   rollback.
+6. Complete the live contract below after publication. Leave the gate enabled
+   only after every check passes. If the run or a live check fails, set the
    variable to a value other than `true` before diagnosing or performing an
    explicit rollback. This disarms future publications; it does not remove an
    already public hostname or already published code.
@@ -321,286 +322,300 @@ automation is not implemented; it is tracked separately in
    Uptime Kuma dashboard/monitor state. Redact credentials, raw addresses,
    user agents, request logs, and individual analytics records.
 
-The hostname can exist while Bunny still serves its starter. That is #9
-provider evidence, not evidence that this repository's application has been
-published.
+During initial setup, the hostname could exist while Bunny still served its
+starter. Hostname evidence alone therefore never proves that this repository's
+application was published.
 
 ## 5. Verify the live contract
 
-This section belongs to issue #10. None of its application or analytics
-assertions may be reported as #9 evidence.
-
 Every successful publication automatically polls with an invalid request for up
-to 16 attempts separated by 10 seconds. Every request has bounded connection
-and total timeouts, and success requires HTTP `400` with the byte-exact body
-`{"error":"invalid_request"}`. This bounded window accommodates Bunny release
-propagation without weakening the contract. It is liveness and contract
-evidence, not proof that Bunny is serving the recorded commit. Exhausting the
-probe attempts after publication leaves the new code live and marks the
-workflow run failed; disarm and roll back explicitly if necessary.
+to 16 attempts separated by 10 seconds. Each request uses a five-second
+connection timeout and a 15-second total timeout, and success requires HTTP
+`400` with byte-exact body `{"error":"invalid_request"}`. This accommodates
+Bunny release propagation without weakening the contract. It proves liveness
+and the invalid-request contract, not the deployed revision or Rybbit
+visibility. If all attempts fail, the published code remains live while the
+workflow fails; disarm and roll back explicitly when necessary.
 
-The repository test for this invalid branch proves that it does not call
-analytics. It does not prove that production Rybbit received no event. Complete
-all of the following checks before any client release embeds the endpoint.
+The successful production verification for issue #11 was associated with
+deployment candidate `04b56723d03c28e9b94a4db9fbbc57a2ee1a3940`. The check
+did not attest which revision was active in Bunny. Its terminal result was
+`COMPLETE` with `success=true` and `cleanupComplete=true`:
 
-### Reserve one synthetic request
+- The fresh browser fixtures passed 32/32 tests, the fresh Curl fixtures passed
+  37/37 tests, and the independent review reported zero Critical, Important,
+  and Note findings. That evidence applies only to this completed attempt.
+- The valid POST returned HTTP `200` with an exact one-key `latestVersion`
+  response that matched the current stable npm version. After its own complete,
+  fixed five-minute visibility window, Rybbit contained exactly one matching
+  aggregate and exactly one matching event.
+- The invalid POST returned HTTP `400` with the byte-exact body
+  `{"error":"invalid_request"}`. Its separate complete five-minute visibility
+  window added no event.
+- The GET returned HTTP `405` with the byte-exact body
+  `{"error":"method_not_allowed"}` and exactly `Allow: POST`. It added no
+  event.
+- The stored event had exactly the six business properties `arch`,
+  `installedSince`, `mode`, `os`, `project`, and `version`. It had no geography,
+  browser, derived operating system, language, device, or identified-user data.
+  Opaque provider session and user identifiers were recorded only as presence
+  booleans, never as values.
+- Repository tests separately proved that the Rybbit transport substitutes the
+  neutral IP address `127.0.0.1` and user agent `version-service`, and that the
+  invalid POST and GET branches do not call Rybbit. The live no-added-event
+  observations complement those branch tests; neither source replaces the
+  other.
 
-Use exactly one fresh six-field tuple for each verification attempt. Mint it in
-one shell and keep that shell open through the request. The timestamped
-`version` makes the tuple distinguishable from real clients; the other values
-are valid but explicitly synthetic:
+The production check also reconfirmed the `.de` hostname's DNS and TLS path.
+Bunny raw request logging was observed off at verification time. This is a
+current-configuration statement only; it makes no claim about historical
+retention, forwarding, deletion, or expiry. Bunny Shield and per-client rate
+limiting remain intentionally absent. Distributed abuse, quota exhaustion,
+dependency failure, and misleading aggregate data therefore remain accepted
+risks.
 
-```bash
-verification_id="$(date -u +'%Y%m%d%H%M%S')"
-synthetic_version="0.0.0-live.${verification_id}"
-synthetic_os="verification"
-synthetic_arch="synthetic_x86_64"
-synthetic_installed_since="$(date -u +'%Y-%m')"
-request_body="$(printf \
-  '{"project":"palamedes","version":"%s","os":"%s","arch":"%s","ci":true,"installedSince":"%s"}' \
-  "$synthetic_version" "$synthetic_os" "$synthetic_arch" "$synthetic_installed_since")"
-printf '%s\n' "$request_body"
-```
+Grafana's Rybbit-backed `update_check >= 400` rule for the preceding 10 minutes
+was verified with one-minute evaluation, `ok` status, converged hosted
+configuration, and the existing notification route selected. Uptime Kuma
+dashboard 42 was verified against Rybbit's non-ingesting `/api/health`
+endpoint. Grafana detects an aggregate condition but does not prevent abuse or
+prove an individual event; Kuma proves endpoint liveness but not ingestion,
+quota, alert delivery, the application contract, or every Rybbit dependency.
 
-Record the printed request before continuing. Its exact stored Rybbit mapping
-must be:
+### Repeat the verification
 
-| Request field    | Request value                | Stored property  | Stored value                 |
-| ---------------- | ---------------------------- | ---------------- | ---------------------------- |
-| `project`        | `palamedes`                  | `project`        | `palamedes`                  |
-| `version`        | `$synthetic_version`         | `version`        | `$synthetic_version`         |
-| `os`             | `verification`               | `os`             | `verification`               |
-| `arch`           | `synthetic_x86_64`           | `arch`           | `synthetic_x86_64`           |
-| `ci`             | `true`                       | `mode`           | `ci`                         |
-| `installedSince` | `$synthetic_installed_since` | `installedSince` | `$synthetic_installed_since` |
+Treat every repeat as a new verification, not as a replay of #11. Create fresh,
+timestamped ephemeral browser, Curl-wrapper, and fixture files:
 
-The request contains `ci`; the stored event contains `mode` instead. Do not
-filter Rybbit for a `ci` property. Never reuse a previously sent or reserved
-tuple. In particular, do not reuse the earlier `version` value
-`0.0.0-verification.11.2`. A tuple is consumed when it is reserved, even if a
-later guard stops the request before it is sent.
+- `/private/tmp/version-service-issue11-browser-<run>.js`
+- `/private/tmp/version-service-issue11-browser-<run>.test.mjs`
+- `/private/tmp/version-service-issue11-curl-<run>.mjs`
+- `/private/tmp/version-service-issue11-curl-<run>.test.mjs`
 
-### Precompute the inclusive visibility range
-
-Choose an expected UTC send time far enough in the future to finish the zero
-baseline. Derive its five-minute visibility deadline, then convert both
-boundaries to calendar dates in `Europe/Berlin`. Replace only the expected UTC
-instant below; it must end in `Z`:
-
-```bash
-precompute_visibility_range() {
-  expected_request_utc="REPLACE_WITH_EXPECTED_UTC_INSTANT"
-  if ! expected_deadline_utc="$(node -e \
-    'const value = Date.parse(process.argv[1]); if (!Number.isFinite(value)) throw new Error("invalid UTC instant"); console.log(new Date(value + 5 * 60 * 1000).toISOString().replace(".000Z", "Z"));' \
-    "$expected_request_utc")"; then
-    printf 'Could not derive the expected deadline.\n' >&2
-    return 1
-  fi
-
-  if ! IFS=$'\t' read -r start_date end_date time_zone < <(node -e '
-    const [start, end] = process.argv.slice(1).map((value) => new Date(value));
-    if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf())) {
-      throw new Error("invalid UTC boundary");
-    }
-    const timeZone = "Europe/Berlin";
-    const formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    const day = (value) => {
-      const parts = Object.fromEntries(
-        formatter.formatToParts(value).map(({ type, value: part }) => [type, part]),
-      );
-      return `${parts.year}-${parts.month}-${parts.day}`;
-    };
-    console.log(`${day(start)}\t${day(end)}\t${timeZone}`);
-  ' "$expected_request_utc" "$expected_deadline_utc"); then
-    printf 'Could not derive the Berlin visibility range.\n' >&2
-    return 1
-  fi
-
-  if [[ -z "$start_date" || -z "$end_date" || "$time_zone" != "Europe/Berlin" ]]; then
-    printf 'The Berlin visibility range is incomplete.\n' >&2
-    return 1
-  fi
-
-  printf 'start_date=%s\nend_date=%s\ntime_zone=%s\n' \
-    "$start_date" "$end_date" "$time_zone"
-}
-precompute_visibility_range
-```
-
-If `precompute_visibility_range` reports an error or returns non-zero, consume
-the tuple and stop before the zero baseline. Do not rerun the function with the
-same tuple.
-
-`start_date` and `end_date` are inclusive. The explicit time zone is part of
-the query contract; do not derive either date in the workstation's local time
-zone. As a regression check, inputs `2026-09-03T22:21:00Z` and
-`2026-09-03T22:26:00Z` must both format as `2026-09-04` in `Europe/Berlin`, so
-the output is `start_date=2026-09-04`, `end_date=2026-09-04`, and
-`time_zone=Europe/Berlin`.
-
-### Establish a zero baseline
-
-Using the existing operator Rybbit query mechanism, query the precomputed range
-with exact equality filters for all of the following. Do not invent a different
-API path or copy credentials into the evidence:
-
-| Query input               | Exact value                  |
-| ------------------------- | ---------------------------- |
-| `start_date`              | `$start_date`                |
-| `end_date`                | `$end_date`                  |
-| `time_zone`               | `Europe/Berlin`              |
-| `event_name`              | `update_check`               |
-| property `project`        | `palamedes`                  |
-| property `version`        | `$synthetic_version`         |
-| property `os`             | `verification`               |
-| property `arch`           | `synthetic_x86_64`           |
-| property `mode`           | `ci`                         |
-| property `installedSince` | `$synthetic_installed_since` |
-
-The baseline must unambiguously return zero events. Keep the date range,
-timezone, event name, and all six property filters unchanged for every later
-poll. A non-zero baseline, an unavailable filter, or an ambiguous count
-consumes the tuple: stop without sending and restart from a newly minted tuple.
-
-### Send once and capture the acknowledgement
-
-Immediately before the single valid request, record the actual UTC instant,
-derive its actual five-minute deadline, and convert both boundaries with the
-same timezone-aware formatter. The block sends only when the actual inclusive
-date range still equals the precomputed one. It captures the client HTTP status
-and body separately and does not retry:
+The helpers are never tracked or reused. Start from a fresh, approved
+live-verification plan and run `effective-flow apply <plan-or-issue>`; Effective
+Flow routes the application to its build workflow and generates fresh ephemeral
+helpers for that attempt. This section defines their required contract. It does
+not authorize an operator to hand-author a helper or reuse a previous helper or
+audit. Run all local fixture checks before reserving a tuple:
 
 ```bash
-{
-  actual_request_utc="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-  actual_deadline_utc="$(node -e \
-    'const value = Date.parse(process.argv[1]); if (!Number.isFinite(value)) throw new Error("invalid UTC instant"); console.log(new Date(value + 5 * 60 * 1000).toISOString().replace(".000Z", "Z"));' \
-    "$actual_request_utc")" || actual_deadline_utc=""
-  actual_start_date=""
-  actual_end_date=""
-  actual_time_zone=""
-  range_status=0
-  IFS=$'\t' read -r actual_start_date actual_end_date actual_time_zone < <(node -e '
-    const [start, end] = process.argv.slice(1).map((value) => new Date(value));
-    if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf())) {
-      throw new Error("invalid UTC boundary");
-    }
-    const timeZone = "Europe/Berlin";
-    const formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    const day = (value) => {
-      const parts = Object.fromEntries(
-        formatter.formatToParts(value).map(({ type, value: part }) => [type, part]),
-      );
-      return `${parts.year}-${parts.month}-${parts.day}`;
-    };
-    console.log(`${day(start)}\t${day(end)}\t${timeZone}`);
-  ' "$actual_request_utc" "$actual_deadline_utc") || range_status=$?
-
-  printf 'actual_request_utc=%s\nactual_deadline_utc=%s\n' \
-    "$actual_request_utc" "$actual_deadline_utc"
-  if [[ -z "$actual_deadline_utc" || "$range_status" -ne 0 || \
-        "$actual_start_date" != "$start_date" || \
-        "$actual_end_date" != "$end_date" || \
-        "$actual_time_zone" != "$time_zone" ]]; then
-    printf 'Date range changed; consume this tuple and stop without sending.\n' >&2
-  else
-    (
-      response_body="$(mktemp)"
-      trap 'rm -f -- "$response_body"' EXIT
-      curl_exit=0
-      http_status="$(curl --silent --show-error \
-        --output "$response_body" \
-        --write-out '%{http_code}' \
-        --request POST \
-        https://version-service.sebastian-software.de/check \
-        --header 'content-type: application/json' \
-        --data "$request_body")" || curl_exit=$?
-      printf 'curl_exit=%s\nHTTP status=%s\nResponse body=' \
-        "$curl_exit" "$http_status"
-      cat "$response_body"
-      printf '\n'
-      rm -f -- "$response_body"
-      trap - EXIT
-    )
-  fi
-}
+node --check /private/tmp/version-service-issue11-browser-<run>.js
+node --check /private/tmp/version-service-issue11-browser-<run>.test.mjs
+node --check /private/tmp/version-service-issue11-curl-<run>.mjs
+node --check /private/tmp/version-service-issue11-curl-<run>.test.mjs
+node --test /private/tmp/version-service-issue11-browser-<run>.test.mjs
+node --test /private/tmp/version-service-issue11-curl-<run>.test.mjs
 ```
 
-Record all four outputs separately: actual request time, actual deadline, HTTP
-status, and response body. The expected client result is curl exit `0`, HTTP
-`200`, and `{"latestVersion":"…"}` matching the current `@palamedes/cli`
-version on npm. Any send attempt consumes the tuple, including a connection
-failure or unexpected response. Do not resend it.
+Commission a fresh independent adversarial review of both helpers. Continue
+only with zero Critical and zero Important findings. A previous run's tests or
+review cannot support a new live attempt.
 
-The outer brace group keeps `actual_request_utc` and `actual_deadline_utc` in
-the open operator shell for polling. The inner subshell scopes the response
-file trap; it removes the file explicitly and clears the trap after a normal
-request, while an interruption still removes the exact `mktemp` path.
+Before tuple reservation, confirm all of the following:
 
-HTTP success proves only that version-service received Rybbit HTTP `200` with a
-body of at most 1 KiB that parses as an object whose sole property is
-`"success": true`, then returned the version response. Discard messages,
-additional acknowledgement properties, other status codes, malformed bodies,
-and oversized bodies fail closed as `analytics_unavailable`. Even the accepted
-acknowledgement does not prove that the event is stored or visible in Rybbit.
-Conversely, a visible event does not excuse a failed or malformed client
-response. Both checks must pass.
+1. The repository checkout and deployed candidate are the intended revisions,
+   `BUNNY_DEPLOY_ENABLED` is absent, and no deployment-capable workflow is
+   queued or active.
+2. The production hostname still has valid DNS and TLS, and the current Bunny
+   logging, intentional Shield absence, Grafana rule, and Kuma monitor match
+   the state described above. Do not mutate a provider during verification.
+3. The browser is authenticated to the clean target Rybbit API playground, and
+   a fresh private Terminal shell has history and tracing disabled.
+4. The local native Curl binary is exactly version `8.7.1`.
 
-### Poll through the actual deadline
+### Keep browser and Terminal responsibilities separate
 
-After the request, poll with the unchanged zero-baseline query through
-`actual_deadline_utc`. Keep polling even if one event appears early, and make a
-final query no earlier than the deadline so a delayed duplicate is observable.
-The final result must contain exactly one `update_check` event whose custom
-properties are exactly the six stored values in the mapping table. The event
-must have no client IP-derived geo, browser, or operating-system identity.
+The browser helper owns only tuple and phase state, the same-origin Rybbit
+reducer, and bounded visibility observations. During one page-local
+initialization, it derives the real opaque site identifier from the
+authenticated playground route, validates it, and freezes it with the expected
+origin and two Rybbit query URLs. It exposes no identifier, raw row, generic
+network primitive, or production/npm access.
 
-Zero events at the deadline is missing evidence; more than one is duplicate
-ingestion. A result whose exact count or property set cannot be established is
-ambiguous. A wrong event name, value, property name, client response, or
-identity field is a contract mismatch. Each outcome consumes the tuple and
-stops the verification; do not change the range, relax a filter, or resend.
-Only exactly one matching event plus the expected client acknowledgement
-passes this proof. Rybbit does not expose the raw user-agent value in its
-dashboard or events API, so do not report the literal value as live Rybbit
-evidence.
+The two Rybbit requests are fixed same-origin GETs with no body or
+caller-controlled options. They use `credentials="same-origin"`,
+`cache="no-store"`, `redirect="error"`, and a bounded abort signal. The
+properties query is authoritative for cardinality and must return fewer than
+500 rows. The events query uses `page_size=500`, the supported JSON
+`event_name=update_check` filter, and must return `cursor.hasMore=false`; do not
+paginate an incomplete result. Each observation is one atomic, non-overlapping
+pair of validated results. Start pairs no more often than every 30 seconds.
 
-Then complete the remaining checks:
+Before the zero baseline, freeze one inclusive Berlin calendar range with
+`time_zone=Europe/Berlin`. It must cover a fixed 45-minute operator envelope:
+the baseline, the valid request and its five-minute window, the invalid request
+and its separate five-minute window, GET, the final poll, and a safety buffer.
+Every actual send and deadline must remain inside that unchanged envelope and
+map to the frozen Berlin dates. Never change dates, URLs, filters, expected
+properties, or tuple values during a run.
 
-1. An invalid payload, such as `{"unexpected":true}`, returns HTTP `400` with
-   exactly `{"error":"invalid_request"}`; `GET` returns `405`. Confirm that
-   the invalid request produces no Rybbit event. If concurrent traffic makes
-   that absence ambiguous, stop rather than claiming it.
-2. The repository's automated edge-script test proves that the server-side
-   event sent to Rybbit pins the transport identity to IP address `127.0.0.1`
-   and user agent `version-service`. Treat this test together with Rybbit's
-   live absence of client-derived identity as the privacy-contract evidence.
-3. Raw Bunny request logging remains off, and Rybbit shows no identifying
-   fields. Do not turn this current-state check into a claim about unassessed
-   historical retention, forwarding, permanent storage, deletion, or expiry.
-4. DNS and TLS resolve correctly for the production hostname.
-5. Grafana's aggregate warning and Uptime Kuma's liveness monitor still match
-   the #9 contract. Neither substitutes for the valid/invalid request evidence
-   above.
+Immediately before the zero baseline and immediately before each valid POST,
+invalid POST, and GET, perform the same read-only deployment-drift check:
+`BUNNY_DEPLOY_ENABLED` must be absent, no deployment-capable run may be queued
+or active, and no new deployment-capable run may have appeared since the
+pre-baseline snapshot. Do not change provider state as part of this check. Any
+uncertainty or drift consumes the tuple and stops the attempt before the next
+query or request.
 
-Record the candidate SHA and workflow timestamps for operational correlation,
-but do not treat them as active-revision attestation.
+The operator launches one private native-Curl wrapper process. It alone owns
+the fixed npm lookup and the strict production order
+`valid POST → invalid POST → GET`. The operator manually confirms every phase,
+and the same wrapper process remains running for the entire sequence.
 
-## 6. Enable clients
+For valid and invalid, the browser imports the sanitized receipt and clears the
+clipboard immediately. The operator then waits until the browser reports that
+the phase's complete five-minute visibility gate passed. Only then does the
+operator enter the fixed acknowledgment `RECEIPT_IMPORTED` in the same running
+wrapper process. The wrapper does not observe or infer Rybbit visibility; it
+trusts only this explicit operator acknowledgment and then emits the sanitized
+marker `VS11_NEXT_PHASE_READY`. It emits no marker on failure. After GET, the
+browser imports and acknowledges the sanitized receipt and clears the clipboard
+immediately; the operator enters `RECEIPT_IMPORTED`, and the wrapper exits
+without a next-phase marker. No later phase runs after a failure.
 
-Issue #11 must be re-planned and approved before any project embeds or enables
-the endpoint. Passing #10 does not authorize a client release. The intended
-future wiring is recorded only as context for that re-planning:
+### Preserve the fixed data contracts
+
+Reserve exactly one fresh, collision-resistant synthetic tuple immediately
+before the baseline. Its fields are `project=palamedes`, a version matching
+`0.0.0-live.<UTC timestamp>.r<96-bit lowercase hex>`, `os=verification`,
+`arch=synthetic_x86_64`, `ci=true`, and `installedSince=<current UTC YYYY-MM>`.
+Reservation consumes the tuple. Any clock, query, clipboard, dispatch,
+response, receipt, or visibility ambiguity also consumes it, even if the
+request may not have reached production. Never retry or reuse it.
+
+The valid request is canonical UTF-8 JSON with exactly these keys in order:
+`project`, `version`, `os`, `arch`, `ci`, and `installedSince`, with no
+whitespace. The invalid request uses the same bytes followed by
+`unexpected:true`. The expected Rybbit property object has exactly `project`,
+`version`, `os`, `arch`, `mode:"ci"`, and `installedSince`; it has neither
+`ci` nor `unexpected`.
+
+The reducer fails closed unless every candidate is an ordinary event row with
+event name `update_check`, the exact six-property object, and the required
+privacy result. Missing privacy fields are neutral. For Rybbit's
+provider-neutral fallbacks, only NUL/whitespace-only padding in the textual
+geography fields is neutral, and the only neutral device tuple is no `device`
+value with `device_type="Mobile"` and numeric `screen_width=0` and
+`screen_height=0`. Any real, partial, string-typed, or otherwise different
+value is identifying and stops the run. The reducer exposes opaque session and
+user identifiers only through presence booleans.
+
+Each sanitized receipt is a one-use object bound to the fixed schema version,
+fresh run nonce, phase, request digest where applicable, Curl start/send
+instant, exit code, whitelisted HTTP status, exact-body/latest-version result,
+and `Allow` equality result where applicable. It contains no request, tuple,
+response headers, stderr, or raw Curl output. The browser must import and
+consume it within 30 seconds of the recorded send instant. Reject malformed,
+stale, reused, late, mismatched, expired, or out-of-phase receipts.
+
+Acknowledgment and visibility prove different facts. A valid HTTP response
+proves that the service accepted the bounded Rybbit acknowledgment and returned
+the npm result; it does not prove that the event is stored or visible. A Rybbit
+row proves visibility; it does not excuse a failed or malformed client
+response. Both must pass.
+
+### Use the three clipboard stages
+
+Use the observable clipboard only for these three bounded stages:
+
+1. Copy a safe command containing only phase, nonce, and digest to the Terminal.
+   Clear it immediately after import.
+2. Copy exactly one tuple-bearing request for the wrapper's private import.
+   Clear it immediately after import, then drop the browser and wrapper
+   references and zero mutable byte buffers on a best-effort basis.
+3. Copy only the sanitized receipt back to the browser. Leave it available
+   until the browser has acknowledged the import, then clear it immediately.
+
+The wrapper validates stage, size, digest, canonical byte form, and exact schema
+before starting Curl. It accepts the request once and passes its bytes only to
+Curl stdin with `--data-binary @-`. The tuple must never enter shell history,
+arguments, environment variables, files, logs, DOM, console output,
+screenshots, or published evidence. Clearing the clipboard does not prove
+deletion from operating-system history, clipboard managers, or cross-device
+synchronization; that remains an accepted risk for this synthetic,
+non-identifying payload.
+
+### Harden Curl and response handling
+
+Invoke Curl directly without a shell. Put `-q` first; use the literal
+`https://version-service.sebastian-software.de/check` URL; bypass proxies; and
+disable config, netrc, cookies, redirects, retries, and alternate protocols.
+Keep TLS verification enabled with `--connect-timeout 5`, `--max-time 15`, and
+`--retry 0`. POST uses exactly `Content-Type: application/json`; GET has no body
+or content-type header. No caller controls the URL, method, headers, or flags.
+
+The stable-version lookup is a separate, fixed, unauthenticated native-Curl GET
+to `https://registry.npmjs.org/@palamedes%2Fcli/latest` under the same network
+restrictions and timeouts. Require Curl exit `0`, HTTP `200`, a bounded JSON
+object, and exactly one valid SemVer `version`.
+
+For each production phase, create one exclusive run-and-phase directory under
+`/private/tmp` with mode `0700`. Create separate exclusive mode-`0600` files for
+the response body and final response headers. Curl stdout may contain only one
+fixed, bounded control record with whitelisted metadata; keep stderr private.
+Reject pre-existing paths, symlinks, wrong ownership or permissions,
+oversized content, malformed or multiple control records, and any response
+file content observed before Curl finishes. Parse GET's final header block
+privately and require exactly one case-insensitive `Allow` field whose trimmed
+value is byte-equal to `POST`.
+
+Delete the exact response and header files immediately after private validation
+on every success or failure path, then remove only their verified empty
+directory. Abort outstanding requests, clear timers and the observable
+clipboard, invalidate actions and receipts, terminate the wrapper and Curl
+child, close or reload the isolated Rybbit page, drop references, and zero
+mutable buffers best-effort. Delete only the four exact helper artifacts after
+sanitized evidence is complete. Ordinary deletion does not prove secure
+erasure from filesystems, runtimes, Curl memory, clipboard services, or
+provider storage.
+
+### Run the baseline and three production phases
+
+1. Repeat the read-only deployment-drift check immediately before establishing
+   an unambiguous zero baseline for the exact tuple. Both bounded Rybbit lists
+   must be complete, and the aggregate and event counts must be zero. Otherwise
+   consume the tuple and stop without production traffic.
+2. Look up the stable npm version immediately around the valid send. Repeat the
+   drift check immediately before the valid POST, then send the valid body once
+   and require Curl exit `0`, HTTP `200`, an exact one-key `latestVersion`
+   response, and equality with npm. The browser imports the receipt within 30
+   seconds and immediately clears the clipboard. Observe atomic Rybbit pairs
+   through the fixed window, including one mandatory final pair started no
+   earlier than five complete minutes after the actual send. Counts may be zero
+   or one before the deadline, must never regress or exceed one, and must both
+   be exactly one in the final pair. After the browser reports that the
+   exact-property, privacy, and visibility gate passed, enter
+   `RECEIPT_IMPORTED` in the same wrapper process and wait for
+   `VS11_NEXT_PHASE_READY`.
+3. Explicitly confirm the invalid phase, repeat the drift check immediately
+   before the invalid POST, and send the invalid body once. Require Curl exit
+   `0`, HTTP `400`, and byte-exact `{"error":"invalid_request"}`. The browser
+   imports the receipt within 30 seconds and immediately clears the clipboard,
+   then runs a separate full five-minute observation window. Both counts must
+   remain exactly one. Only after the browser reports that gate passed, enter
+   `RECEIPT_IMPORTED` in the same wrapper process and wait for the second
+   `VS11_NEXT_PHASE_READY`.
+4. Explicitly confirm the GET phase and repeat the drift check immediately
+   before sending GET once. Require Curl exit `0`, HTTP `405`, byte-exact
+   `{"error":"method_not_allowed"}`, and exact `Allow: POST`. The browser
+   imports and acknowledges the receipt within 30 seconds, immediately clears
+   the clipboard, and confirms that the final atomic Rybbit observation remains
+   unchanged. Enter `RECEIPT_IMPORTED` in the same wrapper process; it ends
+   without another next-phase marker. Report only sanitized terminal state;
+   success requires `COMPLETE`, `success=true`, and `cleanupComplete=true`.
+
+Timeout, disconnect, nonzero Curl exit after dispatch, partial observation,
+count regression, count above one, envelope expiry, deployment drift, or any
+malformed or ambiguous data is terminal. The call may have reached production,
+so consume the tuple and never retry it. Record candidate and workflow times
+only for operational correlation, not as proof of the active Bunny revision.
+
+## 6. Integrate clients
+
+The production endpoint has passed its service-readiness gate. Each client
+repository still owns its integration, consent and opt-out behavior, release
+authorization, and rollback:
 
 - **Palamedes**: build the release with
   `PALAMEDES_UPDATE_ENDPOINT=https://version-service.sebastian-software.de/check`.
@@ -608,9 +623,8 @@ future wiring is recorded only as context for that re-planning:
 - Future Node CLIs use the planned `@sebastian-software/update-check` package
   from this repository.
 
-Before #11 completes, keep every client-owned endpoint switch disabled. After
-later enablement, incident response must use the owning client's rollback or
-disable mechanism as well as any server-side hostname withdrawal.
+After a client enables the endpoint, incident response must use that client's
+rollback or disable mechanism as well as any server-side hostname withdrawal.
 
 ## Adding another project
 
@@ -624,11 +638,10 @@ disable mechanism as well as any server-side hostname withdrawal.
 
 ## Rollback
 
-Before #10 publishes the application, there is no version-service application
-revision to roll back. Containment under #9 is withdrawal of the public custom
-hostname while preserving redacted evidence for diagnosis. Disarming
-`BUNNY_DEPLOY_ENABLED` prevents another publication but does not contain an
-already public service.
+The version-service application is deployed. Disarming
+`BUNNY_DEPLOY_ENABLED` prevents another publication but does not roll back or
+contain the public service. For immediate server-side containment, withdraw the
+public custom hostname while preserving redacted evidence for diagnosis.
 
 The rollback candidate may be any ancestor of the current `main` anchor; there
 is deliberately no minimum version or allowlist. Before rollback, inspect the
@@ -647,9 +660,9 @@ the historical commit. After publication, complete the entire live contract
 and privacy checklist above. To restore current `main`, dispatch the workflow
 again with blank `script_ref` and repeat the checklist.
 
-After #11 has enabled a client, also invoke that client's owned rollback or
-disable control. Do not assume that server rollback or hostname withdrawal
-immediately reaches clients with cached configuration.
+For every enabled client, also invoke that client's owned rollback or disable
+control. Do not assume that server rollback or hostname withdrawal immediately
+reaches clients with cached configuration.
 
 ## Rotate or respond to compromise
 
