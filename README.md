@@ -50,10 +50,24 @@ Response:
 
 ## Status
 
-The edge script is implemented in `packages/edge-script` with a full contract
-test suite, but the service is **not yet deployed** — [DEPLOYMENT.md](DEPLOYMENT.md)
-is the step-by-step guide, including the live verification that must pass
-before any client release embeds the endpoint. The design record is
+The production endpoint is deployed, and the live contract and privacy
+verification for [#11](https://github.com/sebastian-software/version-service/issues/11)
+completed successfully. A valid `POST` returned `200` with the current npm
+version, an invalid `POST` returned the exact `400` error contract, and `GET`
+returned the exact `405` error contract with `Allow: POST`. Fixed observation
+windows showed exactly one valid event and no additional events from the
+invalid or `GET` requests.
+
+The two-source privacy proof found no geography, browser, derived OS, language,
+device, or identified-user data in the live event. Opaque provider IDs were
+checked only as presence booleans; repository tests separately pin neutral
+transport values. [DEPLOYMENT.md](DEPLOYMENT.md) documents the supported
+controlled verification procedure. Fresh helper artifacts are produced through
+a newly approved Effective Flow implementation run before an operator launches
+the native `curl` process.
+
+Client embedding and enablement remain separate, client-owned release
+decisions. The design record is
 [palamedes#1036](https://github.com/sebastian-software/palamedes/issues/1036).
 The Rust reference client lives in
 [palamedes#973](https://github.com/sebastian-software/palamedes/pull/973);
