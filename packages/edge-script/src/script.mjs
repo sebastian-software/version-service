@@ -32,7 +32,13 @@ const PROJECTS = {
 };
 
 export function createHandler(configuration, fetchImplementation = fetch, now = Date.now) {
-  const state = { configuration, fetchImplementation, now, versionCache: new Map() };
+  const state = {
+    configuration,
+    fetchImplementation,
+    now,
+    versionCache: new Map(),
+    pendingRefreshes: new Map(),
+  };
   return async (request) => handle(state, request);
 }
 
@@ -79,6 +85,19 @@ async function latestVersion(state, project) {
   const cached = state.versionCache.get(project);
   if (cached && cached.expiresAtMs > state.now()) return cached.version;
 
+  const pending = state.pendingRefreshes.get(project);
+  if (pending) return pending;
+
+  const refresh = refreshVersion(state, project);
+  state.pendingRefreshes.set(project, refresh);
+  try {
+    return await refresh;
+  } finally {
+    state.pendingRefreshes.delete(project);
+  }
+}
+
+async function refreshVersion(state, project) {
   const packagePath = PROJECTS[project].npmPackage.replace("/", "%2F");
   let version;
   try {

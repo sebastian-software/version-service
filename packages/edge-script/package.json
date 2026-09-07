@@ -8,7 +8,7 @@
   "scripts": {
     "build": "node --check ./src/script.mjs",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --test ./src/script.test.mjs"
+    "test": "node --test ./src/*.test.mjs"
   },
   "devDependencies": {
     "typescript": "^6.0.3"
