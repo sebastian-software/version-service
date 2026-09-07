@@ -1,3 +1,5 @@
+* @sebastian-software/maintainers
+
 /.github/CODEOWNERS @swernerx @fastner
 /.github/workflows/deploy.yml @swernerx @fastner
 /.github/actions/verify-deploy-anchor/ @swernerx @fastner
