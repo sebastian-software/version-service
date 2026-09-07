@@ -25,8 +25,8 @@
     "lint": "pnpm lint:oxlint && pnpm lint:eslint",
     "lint:eslint": "eslint . --max-warnings=0",
     "lint:oxlint": "oxlint -c oxlint.config.ts",
-    "format": "oxfmt --ignore-path .oxfmtignore --write . \"!.sops.yaml\"",
-    "format:check": "oxfmt --ignore-path .oxfmtignore --check . \"!.sops.yaml\"",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
     "check:standards": "standards check",
     "agent:check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test && pnpm check:standards"
   },
