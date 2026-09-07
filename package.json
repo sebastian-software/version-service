@@ -27,11 +27,11 @@
     "lint:oxlint": "oxlint -c oxlint.config.ts",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
-    "check:standards": "standards check",
+    "check:standards": "pnpm exec standards check",
     "agent:check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test && pnpm check:standards"
   },
   "devDependencies": {
-    "@sebastian-software/standards": "^0.2.0",
+    "@sebastian-software/standards": "0.2.0",
     "@types/node": "^24.12.4",
     "eslint": "^10.4.0",
     "eslint-config-setup": "^0.4.0",
