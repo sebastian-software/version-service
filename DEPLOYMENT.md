@@ -630,7 +630,7 @@ rollback or disable mechanism as well as any server-side hostname withdrawal.
 
 1. Add the wire identifier and its npm package to `PROJECTS` in
    `packages/edge-script/src/script.mjs` (projects distributed outside npm
-   need a new version-source entry — extend `latestVersion` accordingly).
+   need a new version-source entry — extend `refreshVersion` accordingly).
 2. Deploy through the manual workflow and verify the live contract with the new
    project id.
 3. Wire the client in the project's own repository, including its
