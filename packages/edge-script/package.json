@@ -11,6 +11,8 @@
     "test": "node --test ./src/*.test.mjs"
   },
   "devDependencies": {
+    "eslint-config-setup": "^0.4.0",
+    "oxlint": "^1.69.0",
     "typescript": "^6.0.3"
   }
 }

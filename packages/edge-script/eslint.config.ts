@@ -10,14 +10,7 @@ for (const block of config) {
 }
 
 config.unshift({
-  ignores: [
-    "**/dist/**",
-    "coverage/**",
-    "node_modules/**",
-    "pnpm-lock.yaml",
-    "**/*.json",
-    "**/*.md",
-  ],
+  ignores: ["dist/**", "coverage/**", "node_modules/**", "**/*.json"],
 });
 
 export default config;
