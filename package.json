@@ -25,13 +25,13 @@
     "lint": "pnpm lint:oxlint && pnpm lint:eslint",
     "lint:eslint": "eslint . --max-warnings=0",
     "lint:oxlint": "oxlint -c oxlint.config.ts",
-    "format": "oxfmt --ignore-path .oxfmtignore --write . \"!.sops.yaml\"",
-    "format:check": "oxfmt --ignore-path .oxfmtignore --check . \"!.sops.yaml\"",
+    "format": "oxfmt --write . \"!.sops.yaml\"",
+    "format:check": "oxfmt --check . \"!.sops.yaml\"",
     "check:standards": "standards check",
     "agent:check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test && pnpm check:standards"
   },
   "devDependencies": {
-    "@sebastian-software/standards": "^0.2.0",
+    "@sebastian-software/standards": "0.10.0",
     "@types/node": "^24.12.4",
     "eslint": "^10.4.0",
     "eslint-config-setup": "^0.4.0",
