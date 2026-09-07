@@ -1,5 +1,6 @@
 {
   "standards": 12,
   "visibility": "oss",
-  "since": 2026
+  "since": 2026,
+  "platform": "github"
 }
