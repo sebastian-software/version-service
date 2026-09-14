@@ -66,8 +66,21 @@ jobs:
       # against an outdated manifest, and `check` reports that as a blocking
       # finding rather than as drift. `require.resolve` also searches the
       # directories declared in `.repometa.json#workspaces`, so a devDependency
-      # installed in a nested workspace is found too. `node -p` rather than
-      # `jq`, which the Forgejo node image may lack.
+      # installed in a nested workspace is found too. The same directories are
+      # then read for the pin itself: every package.json that declares the CLI
+      # must declare a bare exact version literal, and at least one must declare
+      # it - a range, tag, alias or `catalog:` reference cannot be raised to a
+      # release. Like the CLI, the literal also stays within npm's limits - at
+      # most 256 characters, and a major, minor and patch no greater than
+      # Number.MAX_SAFE_INTEGER - because npm resolves a longer or larger one as
+      # a mutable dist-tag. This also catches a CLI too old to report the pin
+      # shape itself.
+      # Deliberately simpler than the CLI and a superset of it: the guard reads
+      # the raw `workspaces` list without the CLI's symlink and normalization
+      # checks, and exempts the CLI's own repository by the literal package name.
+      # A shown specifier keeps only the scheme of a URL, and every control
+      # character becomes `?`, so a declared value cannot inject a log line.
+      # `node -p` rather than `jq`, which the Forgejo node image may lack.
       - name: "Guard: the pinned standards CLI matches the repository stamp"
         run: |
           node -p "
@@ -77,6 +90,29 @@ jobs:
           if (manifest.currentVersion !== meta.standards) {
             throw new Error('The installed @sebastian-software/standards ships manifest version ' + manifest.currentVersion + ', but .repometa.json is stamped ' + meta.standards + '. Raise the pin to the release whose manifest is version ' + meta.standards + ' and refresh the lockfile.');
           }
-          'standards CLI and repository stamp are aligned at version ' + meta.standards
+          const { readFileSync } = require('node:fs');
+          const { join, relative } = require('node:path');
+          const cli = '@sebastian-software/standards';
+          const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
+          const units = paths.flatMap((dir) => {
+            const file = join(dir, 'package.json');
+            try { const pkg = JSON.parse(readFileSync(file, 'utf8')); return isRecord(pkg) ? [{ file: relative(process.cwd(), file), pkg }] : []; } catch { return []; }
+          });
+          const exact = (spec) => typeof spec === 'string' && /^(?:0|[1-9][0-9]*)[.](?:0|[1-9][0-9]*)[.](?:0|[1-9][0-9]*)(?:-(?:[0-9]*[A-Za-z-][0-9A-Za-z-]*|0|[1-9][0-9]*)(?:[.](?:[0-9]*[A-Za-z-][0-9A-Za-z-]*|0|[1-9][0-9]*))*)?(?:[+][0-9A-Za-z-]+(?:[.][0-9A-Za-z-]+)*)?/.exec(spec)?.[0] === spec && spec.length <= 256 && spec.split(/[+-]/, 1)[0].split('.').every((part) => Number(part) <= Number.MAX_SAFE_INTEGER);
+          const shown = (spec) => {
+            const text = typeof spec === 'string' ? spec : JSON.stringify(spec);
+            const reduced = text.includes('://') ? text.slice(0, text.indexOf('://') + 1) : text;
+            return [...reduced].map((char) => { const code = char.charCodeAt(0); return code < 32 || (code >= 127 && code < 160) ? '?' : char; }).join('');
+          };
+          const declared = units.flatMap((unit) => [unit.pkg.devDependencies, unit.pkg.dependencies].filter((deps) => isRecord(deps) && Object.hasOwn(deps, cli)).map((deps) => ({ file: unit.file, spec: deps[cli] })));
+          const exempt = units.some((unit) => unit.pkg.name === cli);
+          const loose = exempt ? [] : declared.filter((entry) => !exact(entry.spec));
+          if (loose.length > 0) {
+            throw new Error(loose.map((entry) => entry.file + ' declares ' + cli + ' as ' + shown(entry.spec)).join('; ') + ' - the pin must be a bare exact version literal such as 0.11.1. Set its value to an exact version in that package.json and dependency field (install with pnpm add --save-exact @sebastian-software/standards@<version>, adding --save-dev for a devDependency), and refresh the lockfile.');
+          }
+          if (!exempt && units.length > 0 && declared.length === 0) {
+            throw new Error('No package.json declares ' + cli + ', but this workflow runs it. Add @sebastian-software/standards@<version> as a devDependency pinned to a bare exact version literal in the package.json this job installs from, and refresh the lockfile.');
+          }
+          'standards CLI and repository stamp are aligned at version ' + meta.standards + ', and the pin is an exact version literal'
           "
       - run: pnpm agent:check
