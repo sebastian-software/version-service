@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "blocking": false,
+  "reason": "The automated agent:check gate failed while pnpm wrote a shim because its runtime reported no space left on device; deployment tests also remain unrun because their fixtures invoke prohibited Git write commands.",
+  "detectedAt": "2026-11-10T18:36:21.000Z",
+  "expectedStandardsVersion": 15,
+  "observedStandardsVersion": 15,
+  "expectedCliVersion": "0.13.0",
+  "observedCliVersion": "0.13.0",
+  "failedChecks": ["pnpm agent:check", "pnpm test:deployment"],
+  "retry": "Restore sufficient storage in the automated runtime and run the full gate in an environment permitting its Git-writing test fixtures, then delete this file after all checks pass."
+}
