@@ -28,7 +28,8 @@
     "format": "oxfmt --write . \"!.sops.yaml\"",
     "format:check": "oxfmt --check . \"!.sops.yaml\"",
     "check:standards": "standards check",
-    "agent:check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test && pnpm check:standards"
+    "check:ci": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test",
+    "agent:check": "pnpm check:ci && pnpm check:standards"
   },
   "devDependencies": {
     "@sebastian-software/standards": "0.13.0",
