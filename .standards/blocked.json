@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "blocking": false,
+  "reason": "The latest automated agent:check run failed before checks started because pnpm could not write a shim due to exhausted runtime storage; deployment tests also remain unrun because their fixtures require prohibited Git writes.",
+  "detectedAt": "2026-11-10T18:42:31.000Z",
+  "expectedStandardsVersion": 15,
+  "observedStandardsVersion": 15,
+  "expectedCliVersion": "0.13.0",
+  "observedCliVersion": "0.13.0",
+  "failedChecks": ["pnpm agent:check", "pnpm test:deployment"],
+  "retry": "Restore sufficient storage in the automated runtime and run the full gate in an environment permitting its Git-writing test fixtures, then delete this file after all checks pass."
+}

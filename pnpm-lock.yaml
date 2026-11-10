@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@sebastian-software/standards':
-        specifier: 0.10.0
-        version: 0.10.0
+        specifier: 0.13.0
+        version: 0.13.0
       '@types/node':
         specifier: ^24.12.4
         version: 24.13.2
@@ -1186,8 +1186,8 @@ packages:
     resolution: {integrity: sha512-SEeaJLb3qBNF/OaXnaR1NmmBbFYk1zC0ZH/52fATcRPLFg/p791YrcyFFy44Bo9sLaGuSuLp5Q6axbb/O+v/RA==}
     engines: {node: ^14.18.0 || >=16.0.0}
 
-  '@sebastian-software/standards@0.10.0':
-    resolution: {integrity: sha512-7b79pfy7oMkIpQAWYZENzi7yJP4VOI6vIgairtx0L0YJ99lbOFI2P94TPeBUSUFwjZvF39yIWmUeORZDrNdmVw==}
+  '@sebastian-software/standards@0.13.0':
+    resolution: {integrity: sha512-jBK0S1NeaKgBbrzfMP1CnSwIigILFPEbexHt7gldrZdiOGDLp6MRuNgkVLcQ4NFW4e0Ov0KsQOuLTNk0TGXKxg==}
     engines: {node: '>=24.0.0'}
     hasBin: true
 
@@ -4481,7 +4481,7 @@ snapshots:
 
   '@pkgr/core@0.3.6': {}
 
-  '@sebastian-software/standards@0.10.0': {}
+  '@sebastian-software/standards@0.13.0': {}
 
   '@sindresorhus/base62@1.0.0': {}
 
