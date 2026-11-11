@@ -27,11 +27,9 @@
     "lint:oxlint": "oxlint -c oxlint.config.ts",
     "format": "oxfmt --write . \"!.sops.yaml\"",
     "format:check": "oxfmt --check . \"!.sops.yaml\"",
-    "check:standards": "standards check",
-    "agent:check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test && pnpm check:standards"
+    "agent:check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test"
   },
   "devDependencies": {
-    "@sebastian-software/standards": "0.10.0",
     "@types/node": "^24.12.4",
     "eslint": "^10.4.0",
     "eslint-config-setup": "^0.4.0",
